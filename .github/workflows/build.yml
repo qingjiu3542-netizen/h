@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: macos-15
     env:
       THEOS: ${{ github.workspace }}/theos
     steps:
@@ -22,16 +22,8 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            make \
-            clang \
-            git \
-            perl \
-            xz-utils \
-            fakeroot \
-            dpkg-dev \
-            ldid
+          brew install ldid dpkg make
+          echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
 
       - name: Set up Theos
         run: |
