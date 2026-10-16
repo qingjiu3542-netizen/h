@@ -1,0 +1,54 @@
+---
+name: Build SidebarLauncher (Theos rootless)
+
+"on":
+  workflow_dispatch:
+  push:
+    branches:
+      - copilot/copilotimplement-ios-jailbreak-sidebar-plugin
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    env:
+      THEOS: ${{ github.workspace }}/theos
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          brew install ldid dpkg make
+          echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
+
+      - name: Set up Theos
+        run: |
+          if [ ! -x "$THEOS/bin/logos.pl" ]; then
+            rm -rf "$THEOS"
+            git clone --quiet --recursive \
+              https://github.com/theos/theos.git "$THEOS"
+          fi
+          if ! ls "$THEOS"/sdks/iPhoneOS*.sdk >/dev/null 2>&1; then
+            rm -rf "$THEOS/sdks"
+            git clone --quiet --depth=1 \
+              https://github.com/theos/sdks.git "$THEOS/sdks"
+          fi
+
+      - name: Validate Sidebar config
+        run: |
+          python3 tests/validate_config.py \
+            layout/var/jb/Library/SidebarLauncher/config.plist
+
+      - name: Build rootless package
+        run: make clean package FINALPACKAGE=1
+
+      - name: Upload deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sidebarlauncher-deb
+          path: packages/*.deb
+          if-no-files-found: error
