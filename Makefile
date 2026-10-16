@@ -10,6 +10,7 @@ TWEAK_NAME = SidebarLauncher
 SidebarLauncher_FILES = Tweak.xm SidebarConfigManager.m
 SidebarLauncher_FRAMEWORKS = UIKit Foundation
 SidebarLauncher_CFLAGS = -fobjc-arc
+SidebarLauncher_CFLAGS += -Wno-error=deprecated-declarations
 SidebarLauncher_CODESIGN_FLAGS = -Sentitlements.plist
 
 include $(THEOS_MAKE_PATH)/tweak.mk
