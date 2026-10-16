@@ -1,0 +1,9 @@
+Package: com.qingjiu3542.sidebarlauncher
+Name: SidebarLauncher
+Version: 0.1.0
+Architecture: iphoneos-arm64
+Description: Rootless SpringBoard sidebar launcher prototype for iOS 16.4.1
+Maintainer: qingjiu3542-netizen
+Author: qingjiu3542-netizen
+Section: Tweaks
+Depends: firmware (>= 16.0)
