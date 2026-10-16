@@ -8,6 +8,9 @@ name: Build SidebarLauncher (Theos rootless)
       - copilot/copilotimplement-ios-jailbreak-sidebar-plugin
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
