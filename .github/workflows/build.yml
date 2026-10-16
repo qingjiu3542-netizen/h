@@ -27,8 +27,16 @@ jobs:
 
       - name: Set up Theos
         run: |
-          git clone --depth=1 https://github.com/theos/theos.git "$THEOS"
-          git clone --depth=1 https://github.com/theos/sdks.git "$THEOS/sdks"
+          if [ ! -x "$THEOS/bin/logos.pl" ]; then
+            rm -rf "$THEOS"
+            git clone --quiet --recursive \
+              https://github.com/theos/theos.git "$THEOS"
+          fi
+          if ! ls "$THEOS"/sdks/iPhoneOS*.sdk >/dev/null 2>&1; then
+            rm -rf "$THEOS/sdks"
+            git clone --quiet --depth=1 \
+              https://github.com/theos/sdks.git "$THEOS/sdks"
+          fi
 
       - name: Validate Sidebar config
         run: |
