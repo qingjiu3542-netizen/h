@@ -42,6 +42,9 @@ static void fvGItemSuperviewHook(id self,SEL cmd,id dest){
 static void fvGHostWindowHook(id self,SEL cmd){
  fvGLifecycle(self,SEND(self,"window"),1);
  if(fvGHostWillWindow)((void(*)(id,SEL))fvGHostWillWindow)(self,cmd);
+#ifdef FV_COMPLETE_MODE
+ if(SEND(self,"window"))fvFMRequestMount(self,ivar(self,"hostingView"));
+#endif
 }
 static void fvKAItemWillWindowHook(id self,SEL cmd,id destination){
  if(SEND(self,"window")!=destination)fvKADetach(self);

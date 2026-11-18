@@ -101,10 +101,38 @@ static BOOL fvFMPrepare(id host,id child){
  SEND(scene,"release");SEND(state,"release");
  return result;
 }
+#if defined(FV_COMPLETE_MODE)
+#include "FVRatioActivationCore.h"
+/* Retry the live mount, not a stale layout snapshot. No Scene writes here. */
+static void fvFMMountRetry(void *context){
+ id work=context,host=fvGGet(work,"host"),child=fvGGet(work,"child"),scene=fvGGet(work,"scene");
+ if(!fvRACurrent(host,scene,child,ivar(host,"appScene"),fvGGet(work,"scene"),
+      ivar(host,"hostingView"),host,SEND(child,"superview"),SEND(host,"window"),SEND(child,"window"),1)){
+  SEND(work,"release");return;
+ }
+ if(fvRACurrent(host,scene,child,ivar(host,"appScene"),scene,ivar(host,"hostingView"),
+     host,SEND(child,"superview"),SEND(host,"window"),SEND(child,"window"),enabled()))fvGRequest(host);
+ SEND(work,"release");
+}
+static void fvFMRequestMount(id host,id child){
+ if(!fvGMain()||!enabled()||!child||ivar(host,"hostingView")!=child||SEND(child,"superview")!=host)return;
+ id scene=ivar(host,"appScene");if(!scene)return;
+ fvGRequest(host);
+ id work=SEND(objc_getClass("NSMutableDictionary"),"dictionary");if(!work)return;
+ fvGPut(work,"host",host);fvGPut(work,"child",child);fvGPut(work,"scene",scene);
+ for(int i=1;i<=2;i++)dispatch_after_f(dispatch_time(0,i*80000000LL),&_dispatch_main_q,SEND(work,"retain"),fvFMMountRetry);
+}
+#endif
 static void fvFMHostAddHook(id self,SEL cmd,id child){
+#if !defined(FV_COMPLETE_MODE)
  fvFMPrepare(self,child);
+#endif
  if(fvFMHostAdd)((void(*)(id,SEL,id))fvFMHostAdd)(self,cmd,child);
+#if defined(FV_COMPLETE_MODE)
+ fvFMRequestMount(self,child);
+#else
  fvGRequest(self);
+#endif
 }
 static void fvFMInstall(Class host){
  if(fvFMInstalled||!host)return;

@@ -373,6 +373,9 @@ static void install(void *unused){
 #endif
  Method iw=class_getInstanceMethod(fvGItemClass,S("didMoveToWindow"));
  if(iw)fvGHook(fvGItemClass,"didMoveToWindow",(IMP)fvKAItemWindowHook,&fvGItemWillWindow);
+#ifdef FV_COMPLETE_MODE
+ fvFMInstall(fvGHostClass);
+#endif
  fvKAInstall(fvGItemClass);
  fvGInstalled=1;
  trace("geometry hooks installed with bounded native restoration");
