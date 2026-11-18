@@ -1,0 +1,22 @@
+name: Validate floatingView with Apple toolchain
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  apple-build:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and verify arm64 and arm64e
+        run: python3 ci/apple-build.py
+      - name: Upload build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: floatingview-apple-build-${{ github.run_number }}
+          path: out/
+          if-no-files-found: warn
