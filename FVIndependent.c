@@ -257,24 +257,26 @@ static BOOL same(id a,const char *b){return ((BOOL(*)(id,SEL,id))objc_msgSend)(a
 #endif
 extern void _dyld_register_func_for_add_image(void(*)(const void*,long));
 static void imageAdded(const void *header,long slide){
-#ifndef FV_FIRST_PRESENTATION_PROBE
+#if !defined(FV_FIRST_PRESENTATION_PROBE) && !defined(FV_FIRST_MOUNT_MODE)
  dispatch_async_f(&_dispatch_main_q,(void*)1,installPrefs);
 #endif
 }
 static void startOnMain(void *unused){
  trace("main queue reached; Foundation available");
-#ifndef FV_FIRST_PRESENTATION_PROBE
+#if !defined(FV_FIRST_PRESENTATION_PROBE) && !defined(FV_FIRST_MOUNT_MODE)
  installPrefs(0);
 #endif
+#ifdef FV_FIRST_PRESENTATION_PROBE
+ fvFPInstall(0);
+#elif defined(FV_FIRST_MOUNT_MODE)
+ dispatch_async_f(&_dispatch_main_q,0,install);
+#else
  id name=SEND(SEND(objc_getClass("NSProcessInfo"),"processInfo"),"processName");
  if(same(name,"SpringBoard")){
-#ifdef FV_FIRST_PRESENTATION_PROBE
-  fvFPInstall(0);
-#else
   dispatch_async_f(&_dispatch_main_q,0,install);
-#endif
   trace("K migration disabled in stable baseline");
  }
+#endif
 }
 __attribute__((constructor)) static void start(void){
  // Do not invoke Foundation/Swift from a dependency initializer: the owner
