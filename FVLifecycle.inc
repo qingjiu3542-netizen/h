@@ -34,6 +34,7 @@ static void fvGHostSuperviewHook(id self,SEL cmd,id dest){
  fvGLifecycle(self,dest,0);if(fvGHostWillSuperview)((void(*)(id,SEL,id))fvGHostWillSuperview)(self,cmd,dest);
 }
 static void fvGItemSuperviewHook(id self,SEL cmd,id dest){
+ if(SEND(self,"superview")!=dest)fvKADetach(self);
  fvGLifecycle(self,dest,0);if(fvGItemWillSuperview)((void(*)(id,SEL,id))fvGItemWillSuperview)(self,cmd,dest);
 }
 static void fvGHostWindowHook(id self,SEL cmd){

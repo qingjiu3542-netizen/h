@@ -32,7 +32,7 @@ static BOOL fvFMEncoding(const char *actual){
  return depth==0&&!__builtin_strcmp(out,"v@:@");
 }
 static BOOL fvFMPrepare(id host,id child){
-#ifdef FV_FIRST_MOUNT_MODE
+#if defined(FV_FIRST_MOUNT_MODE) && !defined(FV_COMPLETE_MODE)
  if(!fvGMain()||!fvGKind(host,fvGHostClass)||!child)return 0;
 #else
  if(!fvGMain()||!enabled()||!fvGKind(host,fvGHostClass)||!child)return 0;

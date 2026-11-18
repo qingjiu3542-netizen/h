@@ -9,6 +9,9 @@ extern void objc_setAssociatedObject(id,const void*,id,U);
 static char fvGStateKey, fvGBusyKey, fvGPendingKey, fvGFullscreenKey, fvGLeavingKey;
 static Class fvGHostClass, fvGItemClass;
 static void fvGRequest(id o);
+static void fvKARefresh(void);
+static void fvKAObserveItem(id item);
+static void fvKADetach(id item);
 static IMP fvGHostLayout, fvGHostFrame, fvGHostBounds;
 static IMP fvGItemLayout, fvGItemFrame, fvGItemBounds;
 static int fvGInstalled, fvGAttempts;
@@ -260,6 +263,9 @@ static void fvGDrain(void *context){
  id work=context,h=fvGGet(work,"host"),token=fvGGet(work,"token");
  if(fvGWorkCurrent(work,&fvGPendingKey)&&!objc_getAssociatedObject(h,&fvGLeavingKey))fvGApply(h);
  if(objc_getAssociatedObject(h,&fvGPendingKey)==token)objc_setAssociatedObject(h,&fvGPendingKey,0,1);
+ id item=SEND(h,"superview");
+ if(fvGKind(item,fvGItemClass)&&SEND(item,"window"))fvKAObserveItem(item);
+ fvKARefresh();
  SEND(work,"release");
 }
 static void fvGRequest(id o){
@@ -307,14 +313,20 @@ static BOOL fvGCanHook(Class c){
   class_getInstanceMethod(c,S("setFrame:"))&&class_getInstanceMethod(c,S("setBounds:"));
 }
 #include "FVFirstMount.inc"
+#include "FVKeyboardAvoidance.inc"
 #include "FVLifecycle.inc"
+static void fvKAItemWindowHook(id self,SEL cmd){
+ fvGItemWindowHook(self,cmd);
+ if(SEND(self,"window")){fvKAObserveItem(self);fvKARefresh();}
+ else fvKADetach(self);
+}
 static void install(void *unused){
  (void)unused;
  if(fvGInstalled)return;
  fvGHostClass=objc_getClass("_TtC12floatingView24FVAppDispatchHostingView");
  fvGItemClass=objc_getClass("_TtC12floatingView17FVAppDispatchItem");
  fvFMInstall(fvGHostClass);
-#ifdef FV_FIRST_MOUNT_MODE
+#if defined(FV_FIRST_MOUNT_MODE) && !defined(FV_COMPLETE_MODE)
  fvGInstalled=1;
  trace("first-mount-only mode: legacy layout geometry hooks disabled");
  return;
@@ -340,7 +352,8 @@ static void install(void *unused){
  Method ww=class_getInstanceMethod(fvGHostClass,S("didMoveToWindow"));
  if(ww)fvGHook(fvGHostClass,"didMoveToWindow",(IMP)fvGHostWindowHook,&fvGHostWillWindow);
  Method iw=class_getInstanceMethod(fvGItemClass,S("didMoveToWindow"));
- if(iw)fvGHook(fvGItemClass,"didMoveToWindow",(IMP)fvGItemWindowHook,&fvGItemWillWindow);
+ if(iw)fvGHook(fvGItemClass,"didMoveToWindow",(IMP)fvKAItemWindowHook,&fvGItemWillWindow);
+ fvKAInstall(fvGItemClass);
  fvGInstalled=1;
  trace("geometry hooks installed with bounded native restoration");
 }

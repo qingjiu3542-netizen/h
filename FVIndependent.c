@@ -122,7 +122,7 @@ static void install(void*unused){
  if(!installed&&attempts++<30)dispatch_after_f(dispatch_time(0,1000000000),&_dispatch_main_q,0,install);
 }
 #endif
-#if !defined(FV_FIRST_PRESENTATION_PROBE) && !defined(FV_FIRST_MOUNT_MODE)
+#if !defined(FV_FIRST_PRESENTATION_PROBE)
 // SETTINGS: installed only after dyld/ObjC finish registering the host bundle.
 extern const char *class_getName(Class);
 extern void *objc_getAssociatedObject(id,const void*);
@@ -257,13 +257,13 @@ static BOOL same(id a,const char *b){return ((BOOL(*)(id,SEL,id))objc_msgSend)(a
 #endif
 extern void _dyld_register_func_for_add_image(void(*)(const void*,long));
 static void imageAdded(const void *header,long slide){
-#if !defined(FV_FIRST_PRESENTATION_PROBE) && !defined(FV_FIRST_MOUNT_MODE)
+#if !defined(FV_FIRST_PRESENTATION_PROBE)
  dispatch_async_f(&_dispatch_main_q,(void*)1,installPrefs);
 #endif
 }
 static void startOnMain(void *unused){
  trace("main queue reached; Foundation available");
-#if !defined(FV_FIRST_PRESENTATION_PROBE) && !defined(FV_FIRST_MOUNT_MODE)
+#if !defined(FV_FIRST_PRESENTATION_PROBE)
  installPrefs(0);
 #endif
 #ifdef FV_FIRST_PRESENTATION_PROBE
