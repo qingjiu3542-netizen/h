@@ -52,18 +52,17 @@ static BOOL fvFMPrepare(id host,id child){
  /* Capture a reversible baseline before submitting anything. If the remote
   * surface has not reached a readable geometry yet, defer this experiment. */
  id parent=SEND(host,"superview"),remote=ivar(host,"hostingView");
- Rect cb=rect(parent,"bounds"),hf=rect(host,"frame"),rb=rect(remote,"bounds");
- Transform rt=trans(remote);Point center=fvGCenter(remote);
- if(!fvGRect(cb)||!fvGRect(hf)||!fvGRect(rb)||!fvGTransform(rt)||!fvGPoint(center)||!fvGHas(cached,"frame")){
-  trace("first mount: baseline geometry unavailable; scene unchanged");return 0;
- }
+ if(!fvGViews(host,parent,remote))return 0;
+ Rect cb=rect(parent,"bounds");
+ Transform identity={1,0,0,1,0,0};
+ if(!fvGRect(cb)||!fvGSameTransform(trans(parent),identity)||fvGWindowCoverage(parent,cb)!=0)return 0;
+ if(!fvGHas(cached,"frame")||!fvGRect(rect(cached,"frame")))return 0;
  id state=SEND(objc_getClass("NSMutableDictionary"),"dictionary");
  fvGIdentity(state,"parent",parent);fvGIdentity(state,"scene",scene);fvGIdentity(state,"remote",remote);
  fvGPut(state,"orientation",SEND(objc_getClass("NSNumber"),"numberWithLong:",(U)orientation));
- fvGPut(state,"sceneFrame",fvGBoxRect(sf));fvGPut(state,"parentBounds",fvGBoxRect(cb));
- fvGPut(state,"hostFrame",fvGBoxRect(hf));fvGPut(state,"remoteBounds",fvGBoxRect(rb));
- fvGPut(state,"remoteTransform",fvGBoxTransform(rt));fvGPut(state,"remoteCenter",fvGBoxPoint(center));
- fvGPut(state,"presentationCaptured",SEND(objc_getClass("NSNumber"),"numberWithInt:",1));
+ /* Original presentation runs after mounting. Capture only the native
+  * scene frame here, and defer view snapshots to the presentation pass. */
+ fvGPut(state,"sceneFrame",fvGBoxRect(sf));
  objc_setAssociatedObject(host,&fvGStateKey,state,1);
  SEND(state,"retain");SEND(scene,"retain");SEND(cached,"retain");
  SEND(remote,"retain");SEND(parent,"retain");

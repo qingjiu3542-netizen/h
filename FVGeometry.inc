@@ -115,6 +115,19 @@ static BOOL fvGComputeVirtual(double baseWidth,double hostWidth,double ratio,FVV
  out->sceneSize=(Size){baseWidth,sh};out->hostSize=(Size){hostWidth,hh};out->visualScale=scale;return 1;
 }
 #include "FVRestore.inc"
+/* Returns -1 when window coverage cannot be measured. */
+static int fvGWindowCoverage(id item,Rect itemBounds){
+ id window=SEND(item,"window");
+ if(!fvGHas(window,"bounds")||!fvGHas(item,"convertRect:toView:"))return -1;
+ Rect windowBounds=rect(window,"bounds");
+ Rect visible=((Rect(*)(id,SEL,Rect,id))objc_msgSend)(item,S("convertRect:toView:"),itemBounds,window);
+ if(!fvGRect(windowBounds)||!fvGRect(visible))return -1;
+ double insetX=windowBounds.size.width*0.05,insetY=windowBounds.size.height*0.05;
+ return visible.origin.x<=windowBounds.origin.x+insetX&&
+  visible.origin.y<=windowBounds.origin.y+insetY&&
+  visible.origin.x+visible.size.width>=windowBounds.origin.x+windowBounds.size.width-insetX&&
+  visible.origin.y+visible.size.height>=windowBounds.origin.y+windowBounds.size.height-insetY;
+}
 static void fvGApply(id h){
  if(!fvGMain()||objc_getAssociatedObject(h,&fvGBusyKey))return;
  id p=SEND(h,"superview"),scene=ivar(h,"appScene"),r=ivar(h,"hostingView"),cached=ivar(h,"appSetting");
@@ -155,13 +168,9 @@ static void fvGApply(id h){
   * portrait scene. The scene orientation is retained in the transform below;
   * the logical scene remains 9:16 and the host remains independently sized. */
  (void)deviceLandscape;
- id screen=SEND(objc_getClass("UIScreen"),"mainScreen");
- if(!fvGHas(screen,"bounds"))goto done;
- Rect screenBounds=rect(screen,"bounds");if(!fvGRect(screenBounds))goto done;
- /* Fullscreen transition: the parent now covers the screen. Restore the
-  * saved scene before applying any 9:16 presentation geometry. */
- BOOL parentLooksFullscreen=pb.size.width>=screenBounds.size.width*0.90&&pb.size.height>=screenBounds.size.height*0.90;
- if(parentLooksFullscreen){
+ int coverage=fvGWindowCoverage(p,pb);
+ if(coverage<0)goto done;
+ if(coverage){
   if(!state){
    objc_setAssociatedObject(h,&fvGFullscreenKey,SEND(objc_getClass("NSNumber"),"numberWithInt:",1),1);
    goto done;
@@ -172,11 +181,8 @@ static void fvGApply(id h){
   fvGRestore(h,0);goto done;
  }
  if(nativeOuter)goto done;
- if(objc_getAssociatedObject(h,&fvGFullscreenKey)){
-  if(pb.size.width<screenBounds.size.width*0.90||pb.size.height<screenBounds.size.height*0.90)
-   objc_setAssociatedObject(h,&fvGFullscreenKey,0,1);
-  else goto done;
- }
+ if(objc_getAssociatedObject(h,&fvGFullscreenKey))
+  objc_setAssociatedObject(h,&fvGFullscreenKey,0,1);
  /* Read the native logical width once, then keep a separate virtual Scene
   * size and visual scale. The outer item width is presentation geometry. */
  /* The scene frame may itself be landscape. Its short edge is the
@@ -227,12 +233,18 @@ static void fvGApply(id h){
   state=SEND(objc_getClass("NSMutableDictionary"),"dictionary");
   fvGIdentity(state,"parent",p);fvGIdentity(state,"scene",scene);fvGIdentity(state,"remote",r);
   fvGPut(state,"orientation",SEND(objc_getClass("NSNumber"),"numberWithLong:",(U)orientation));
-  fvGPut(state,"sceneFrame",fvGBoxRect(sf));fvGPut(state,"parentBounds",fvGBoxRect(pb));
-  fvGPut(state,"hostFrame",fvGBoxRect(hf));fvGPut(state,"remoteBounds",fvGBoxRect(rb));
-  fvGPut(state,"remoteTransform",fvGBoxTransform(rt));fvGPut(state,"remoteCenter",fvGBoxPoint(rc));
+  fvGPut(state,"sceneFrame",fvGBoxRect(sf));
   objc_setAssociatedObject(h,&fvGStateKey,state,1);
  }
  if(!fvGSceneFrame(scene,settings,cached,targetScene))goto done;
+ if(objc_getAssociatedObject(h,&fvGStateKey)!=state||ivar(h,"appScene")!=scene||
+    ivar(h,"appSetting")!=cached||ivar(h,"hostingView")!=r||SEND(h,"superview")!=p)goto done;
+ if(!fvGGet(state,"presentationCaptured")){
+  fvGPut(state,"parentBounds",fvGBoxRect(pb));
+  fvGPut(state,"hostFrame",fvGBoxRect(hf));fvGPut(state,"remoteBounds",fvGBoxRect(rb));
+  fvGPut(state,"remoteTransform",fvGBoxTransform(rt));fvGPut(state,"remoteCenter",fvGBoxPoint(rc));
+  fvGPut(state,"presentationCaptured",SEND(objc_getClass("NSNumber"),"numberWithInt:",1));
+ }
  /* Parent transform and center are never assigned, even on restoration. */
  if(!fvGSameRect(pb,targetParent))setrect(p,"setBounds:",targetParent);
  if(!fvGSameRect(hf,targetHost))setrect(h,"setFrame:",targetHost);
