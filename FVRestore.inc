@@ -37,7 +37,8 @@ static void fvGRCommit(void *v){
  id p=SEND(c->h,"superview"),r=ivar(c->h,"hostingView");
  /* Never replay old presentation into replacement views. Outer transforms
   * are left intact; they must not suppress the scene restoration above. */
- if(c->mode!=2 && fvGIdentical(c->state,"parent",p)&&fvGIdentical(c->state,"remote",r)&&fvGViews(c->h,p,r)){
+ if(c->mode!=2 && fvGGet(c->state,"presentationCaptured") &&
+    fvGIdentical(c->state,"parent",p)&&fvGIdentical(c->state,"remote",r)&&fvGViews(c->h,p,r)){
   if(c->mode==0){
    setrect(p,"setBounds:",fvGUnboxRect(c->state,"parentBounds"));
    setrect(c->h,"setFrame:",fvGUnboxRect(c->state,"hostFrame"));

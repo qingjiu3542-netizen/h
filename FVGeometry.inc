@@ -327,8 +327,11 @@ static void install(void *unused){
  if(fvGInstalled)return;
  fvGHostClass=objc_getClass("_TtC12floatingView24FVAppDispatchHostingView");
  fvGItemClass=objc_getClass("_TtC12floatingView17FVAppDispatchItem");
- fvFMInstall(fvGHostClass);
+ /* Keep scene-only writes confined to the first-mount diagnostic. The
+  * integrated build waits for the live host/item/remote geometry, then
+  * applies the Scene and presentation together in fvGApply. */
 #if defined(FV_FIRST_MOUNT_MODE) && !defined(FV_COMPLETE_MODE)
+ fvFMInstall(fvGHostClass);
  fvGInstalled=1;
  trace("first-mount-only mode: legacy layout geometry hooks disabled");
  return;
