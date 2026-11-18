@@ -100,6 +100,14 @@ static BOOL fvGSceneFrame(id scene,id settings,id cached,Rect frame){
  return 1;
 }
 typedef struct {Size sceneSize;Size hostSize;double visualScale;} FVVirtualGeometry;
+#include "FVFirstMountCore.h"
+static Rect fvGTargetSceneFrame(Rect nativeFrame,long orientation){
+ Size result={0};
+ fvRatioSceneSize(nativeFrame.size.width,nativeFrame.size.height,orientation,
+                  &result.width,&result.height);
+ nativeFrame.size=result;
+ return nativeFrame;
+}
 static BOOL fvGComputeVirtual(double baseWidth,double hostWidth,double ratio,FVVirtualGeometry*out){
  if(!out||!fvGNumber(baseWidth)||!fvGNumber(hostWidth)||!fvGNumber(ratio)||baseWidth<=0||hostWidth<=0||ratio<=0)return 0;
  double sh=baseWidth/ratio,hh=hostWidth/ratio,scale=hostWidth/baseWidth;
@@ -173,13 +181,16 @@ static void fvGApply(id h){
   * size and visual scale. The outer item width is presentation geometry. */
  /* The scene frame may itself be landscape. Its short edge is the
   * portrait logical width; the long edge is produced by the 16:9 ratio. */
- double baseWidth=landscape?(sf.size.height<sf.size.width?sf.size.height:sf.size.width):sf.size.width;
+ Rect nativeFrame=state?fvGUnboxRect(state,"sceneFrame"):sf;
+ if(!fvGRect(nativeFrame))goto done;
+ Rect targetScene=fvGTargetSceneFrame(nativeFrame,orientation);
+ if(!fvGRect(targetScene))goto done;
+ double baseWidth=landscape?targetScene.size.height:targetScene.size.width;
  double displayWidth=pb.size.width;
  FVVirtualGeometry vg={0};
  if(!fvGComputeVirtual(baseWidth,displayWidth,9.0/16.0,&vg))goto done;
  double displayHeight=vg.hostSize.height;
  double scale=vg.visualScale;
- Rect targetScene={{sf.origin.x,sf.origin.y},vg.sceneSize};
  if(!fvGNumber(scale)||scale<=0||!fvGNumber(displayHeight))goto done;
  /* Preserve the original helper's rotation. Accept only an existing uniform,
   * orthogonal, orientation-compatible transform; wait for original geometry
@@ -207,7 +218,7 @@ static void fvGApply(id h){
   * portrait logical size here makes the rotated visible box 16:9 instead
   * of the host's 9:16 box. */
  Rect targetRemote=rb;
- targetRemote.size=landscape?(Size){vg.sceneSize.height,vg.sceneSize.width}:vg.sceneSize;
+ targetRemote.size=targetScene.size;
  Transform targetTransform=rotation;
  targetTransform.a*=scale;targetTransform.b*=scale;targetTransform.c*=scale;targetTransform.d*=scale;
  Point targetCenter={displayWidth/2.0,displayHeight/2.0};

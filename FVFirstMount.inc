@@ -47,13 +47,8 @@ static BOOL fvFMPrepare(id host,id child){
  Rect sf=rect(settings,"frame");if(!fvGRect(sf))return 0;
  long orientation=((long(*)(id,SEL))objc_msgSend)(settings,S("interfaceOrientation"));
  if(orientation<1||orientation>4)return 0;
- /* Keep the app logical surface portrait 9:16. The original helper still
-  * owns the visual rotation for a landscape scene after this submission. */
- double base=sf.size.width<sf.size.height?sf.size.width:sf.size.height;
- double targetHeight=base*16.0/9.0;
- if(!fvGNumber(targetHeight)||targetHeight<=0)return 0;
- Rect target=sf;target.origin=(Point){0,0};target.size=(Size){base,targetHeight};
- if(fvGSameRect(sf,target))return 0;
+ Rect target=fvGTargetSceneFrame(sf,orientation);
+ if(!fvGRect(target)||fvGSameRect(sf,target))return 0;
  /* Capture a reversible baseline before submitting anything. If the remote
   * surface has not reached a readable geometry yet, defer this experiment. */
  id parent=SEND(host,"superview"),remote=ivar(host,"hostingView");
