@@ -32,7 +32,11 @@ static BOOL fvFMEncoding(const char *actual){
  return depth==0&&!__builtin_strcmp(out,"v@:@");
 }
 static BOOL fvFMPrepare(id host,id child){
+#ifdef FV_FIRST_MOUNT_MODE
+ if(!fvGMain()||!fvGKind(host,fvGHostClass)||!child)return 0;
+#else
  if(!fvGMain()||!enabled()||!fvGKind(host,fvGHostClass)||!child)return 0;
+#endif
  /* Only prepare the exact remote view the original host owns; do not touch
   * background/decoration subviews sent through the same selector. */
  if(ivar(host,"hostingView")!=child)return 0;

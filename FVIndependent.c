@@ -122,7 +122,7 @@ static void install(void*unused){
  if(!installed&&attempts++<30)dispatch_after_f(dispatch_time(0,1000000000),&_dispatch_main_q,0,install);
 }
 #endif
-#ifndef FV_FIRST_PRESENTATION_PROBE
+#if !defined(FV_FIRST_PRESENTATION_PROBE) && !defined(FV_FIRST_MOUNT_MODE)
 // SETTINGS: installed only after dyld/ObjC finish registering the host bundle.
 extern const char *class_getName(Class);
 extern void *objc_getAssociatedObject(id,const void*);

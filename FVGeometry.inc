@@ -314,6 +314,11 @@ static void install(void *unused){
  fvGHostClass=objc_getClass("_TtC12floatingView24FVAppDispatchHostingView");
  fvGItemClass=objc_getClass("_TtC12floatingView17FVAppDispatchItem");
  fvFMInstall(fvGHostClass);
+#ifdef FV_FIRST_MOUNT_MODE
+ fvGInstalled=1;
+ trace("first-mount-only mode: legacy layout geometry hooks disabled");
+ return;
+#endif
  if(!fvGCanHook(fvGHostClass)||!fvGCanHook(fvGItemClass)){
   /* Classes are registered asynchronously by the host bundle. Poll briefly
    * so the first visible frame does not remain native-sized for a full second. */
