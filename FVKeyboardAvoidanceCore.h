@@ -8,6 +8,12 @@ typedef enum { FVKAInvalid=0, FVKAClear=1, FVKAMove=2, FVKANoRoom=3 } FVKAResult
 static inline double fvKACoreMin(double a,double b){return a<b?a:b;}
 static inline double fvKACoreMax(double a,double b){return a>b?a:b;}
 static inline int fvKAFinite(double a){return __builtin_isfinite(a)&&a>-1000000&&a<1000000;}
+static inline int fvKAAffineIsSimilarity(double a,double b,double c,double d){
+ if(!fvKAFinite(a)||!fvKAFinite(b)||!fvKAFinite(c)||!fvKAFinite(d))return 0;
+ double x=a*a+b*b,y=c*c+d*d,dot=a*c+b*d;
+ return x>1e-8&&y>1e-8&&__builtin_fabs(x-y)<=1e-4*fvKACoreMax(x,y)&&
+  __builtin_fabs(dot)<=1e-4*fvKACoreMax(x,y);
+}
 static inline int fvKAValidRect(FVRect r){
  return fvKAFinite(r.x)&&fvKAFinite(r.y)&&fvKAFinite(r.width)&&fvKAFinite(r.height)&&r.width>0&&r.height>0;
 }

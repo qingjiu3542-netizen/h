@@ -133,6 +133,12 @@ static int fvGWindowCoverage(id item,Rect itemBounds){
   visible.origin.x+visible.size.width>=windowBounds.origin.x+windowBounds.size.width-insetX&&
   visible.origin.y+visible.size.height>=windowBounds.origin.y+windowBounds.size.height-insetY;
 }
+#include "FVKeyboardAvoidanceCore.h"
+static void fvGDecision(unsigned code,const char *message){
+ static unsigned reported;
+ unsigned bit=1u<<code;
+ if(!(reported&bit)){reported|=bit;trace(message);}
+}
 static void fvGApply(id h){
  if(!fvGMain()||objc_getAssociatedObject(h,&fvGBusyKey))return;
  id p=SEND(h,"superview"),scene=ivar(h,"appScene"),r=ivar(h,"hostingView"),cached=ivar(h,"appSetting");
@@ -146,17 +152,23 @@ static void fvGApply(id h){
   fvGRestore(h,mode);
   return;
  }
- if(!active||!fvGViews(h,p,r))return;
- if(!fvGSettings(scene,cached,&settings))return;
+ if(!active){fvGDecision(0,"ratio 0.1.2: preference off in SpringBoard");return;}
+ if(!fvGViews(h,p,r)){fvGDecision(1,"ratio 0.1.2: waiting for item/host/remote");return;}
+ if(!fvGSettings(scene,cached,&settings)){fvGDecision(2,"ratio 0.1.2: scene settings unavailable");return;}
  Rect pb=rect(p,"bounds"),hf=rect(h,"frame"),rb=rect(r,"bounds"),sf=rect(settings,"frame");
  Transform ht=trans(h),rt=trans(r);Transform pt=trans(p);Point rc=fvGCenter(r);
  if(!fvGRect(pb)||!fvGRect(hf)||!fvGRect(rb)||!fvGRect(sf)||
-    !fvGTransform(rt)||!fvGTransform(pt)||!fvGPoint(rc))return;
+    !fvGTransform(ht)||!fvGTransform(rt)||!fvGTransform(pt)||!fvGPoint(rc)){
+  fvGDecision(4,"ratio 0.1.2: invalid geometry values");return;
+ }
  /* The original keyboard path scales/moves FVAppDispatchItem (the parent),
   * not the remote scene host. Keep that state instead of rejecting it. */
- BOOL nativeOuter=!(fvGNear(pt.a,1)&&fvGNear(pt.b,0)&&fvGNear(pt.c,0)&&fvGNear(pt.d,1)&&fvGNear(pt.tx,0)&&fvGNear(pt.ty,0));
- /* Do not commit a partial transaction while floatingView owns an outer
-  * rotation/animation transform. Let the original layout settle first. */
+ /* The item bounds are local coordinates, even when the item is scaled
+  * or rotated. The host frame, however, requires an untransformed host. */
+ Transform identity={1,0,0,1,0,0};
+ if(!fvKAAffineIsSimilarity(pt.a,pt.b,pt.c,pt.d)||!fvGSameTransform(ht,identity)){
+  fvGDecision(3,"ratio 0.1.2: unsupported item/host transform");return;
+ }
  long sceneOrientation=((long(*)(id,SEL))objc_msgSend)(settings,S("interfaceOrientation"));
  /* Device orientation and scene orientation are separate contracts. A phone
   * may be physically landscape while this app scene remains portrait; that
@@ -185,7 +197,6 @@ static void fvGApply(id h){
  if(state&&(long)SEND(fvGGet(state,"orientation"),"longValue")!=orientation){
   fvGRestore(h,0);goto done;
  }
- if(nativeOuter)goto done;
  if(objc_getAssociatedObject(h,&fvGFullscreenKey))
   objc_setAssociatedObject(h,&fvGFullscreenKey,0,1);
  /* Read the native logical width once, then keep a separate virtual Scene
@@ -222,7 +233,7 @@ static void fvGApply(id h){
  rotation.c=-rotation.b;rotation.d=rotation.a;
  rotation.tx=0;rotation.ty=0;
  Rect targetParent=pb;
- if(!nativeOuter)targetParent.size.height=displayHeight;
+ targetParent.size.height=displayHeight;
  Rect targetHost={{hf.origin.x,hf.origin.y},{displayWidth,displayHeight}};
  /* A landscape scene is rotated into the portrait floating host. The
   * remote bounds must therefore be the pre-rotation dimensions; using the
@@ -253,9 +264,9 @@ static void fvGApply(id h){
  /* Parent transform and center are never assigned, even on restoration. */
  if(!fvGSameRect(pb,targetParent))setrect(p,"setBounds:",targetParent);
  if(!fvGSameRect(hf,targetHost))setrect(h,"setFrame:",targetHost);
- if(!nativeOuter&& !fvGSameRect(rb,targetRemote))setrect(r,"setBounds:",targetRemote);
- if(!nativeOuter&& !fvGSameTransform(rt,targetTransform))fvGSetTransform(r,targetTransform);
- if(!nativeOuter&&(!fvGNear(rc.x,targetCenter.x)||!fvGNear(rc.y,targetCenter.y)))fvGSetCenter(r,targetCenter);
+ if(!fvGSameRect(rb,targetRemote))setrect(r,"setBounds:",targetRemote);
+ if(!fvGSameTransform(rt,targetTransform))fvGSetTransform(r,targetTransform);
+ if(!fvGNear(rc.x,targetCenter.x)||!fvGNear(rc.y,targetCenter.y))fvGSetCenter(r,targetCenter);
  done:objc_setAssociatedObject(h,&fvGBusyKey,0,1);
 }
 /* One outstanding trailing update per host, at most 20 geometry passes/sec.
