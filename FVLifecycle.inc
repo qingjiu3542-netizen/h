@@ -2,6 +2,7 @@
  * Pending geometry passes must never reapply the ratio after teardown starts.
  */
 static IMP fvGHostWillSuperview,fvGItemWillSuperview;
+static IMP fvKAItemWillMoveWindow;
 static IMP fvGHostWillWindow,fvGItemWillWindow;
 static void fvGRestoreScene(id h){fvGRestore(h,2);}
 static void fvGRestoreRetry(void *context){
@@ -31,6 +32,7 @@ static void fvGLifecycle(id self,id destination,BOOL window){
  }
 }
 static void fvGHostSuperviewHook(id self,SEL cmd,id dest){
+ if(SEND(self,"superview")!=dest)fvKADetach(SEND(self,"superview"));
  fvGLifecycle(self,dest,0);if(fvGHostWillSuperview)((void(*)(id,SEL,id))fvGHostWillSuperview)(self,cmd,dest);
 }
 static void fvGItemSuperviewHook(id self,SEL cmd,id dest){
@@ -40,6 +42,10 @@ static void fvGItemSuperviewHook(id self,SEL cmd,id dest){
 static void fvGHostWindowHook(id self,SEL cmd){
  fvGLifecycle(self,SEND(self,"window"),1);
  if(fvGHostWillWindow)((void(*)(id,SEL))fvGHostWillWindow)(self,cmd);
+}
+static void fvKAItemWillWindowHook(id self,SEL cmd,id destination){
+ if(SEND(self,"window")!=destination)fvKADetach(self);
+ if(fvKAItemWillMoveWindow)((void(*)(id,SEL,id))fvKAItemWillMoveWindow)(self,cmd,destination);
 }
 static void fvGItemWindowHook(id self,SEL cmd){
  fvGLifecycle(self,SEND(self,"window"),1);

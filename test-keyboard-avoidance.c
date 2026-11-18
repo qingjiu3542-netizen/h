@@ -60,6 +60,27 @@ int main(void){
  near(dragged.x,200);near(dragged.y,450); /* never replay an obsolete center */
  FVPoint original=fvKABaseline((FVPoint){170,520},(FVPoint){170,442},(FVPoint){0,-68},1);
  near(original.y,520); /* native animation supersedes our last write */
+ /* Screen session policy: stale/missing hide source can clear, never move. */
+ CHECK(fvKAEvent(1,0,0,1,0)==-1);
+ CHECK(fvKAEvent(1,1,1,1,0)==-1);
+ CHECK(fvKAEvent(1,1,0,1,0)==0);
+ CHECK(fvKAEvent(0,0,0,1,0)==0);
+ CHECK(fvKAEvent(0,0,0,0,1)==0);
+ CHECK(fvKAEvent(1,1,0,0,1)==0);
+ CHECK(fvKAEvent(1,1,1,0,0)==-1);
+ CHECK(fvKAEvent(0,1,0,0,1)==1);
+ CHECK(fvKAEvent(0,1,0,0,0)==-1);
+ CHECK(!fvKAIntersects((FVRect){0,932,430,332},view));
+ CHECK(fvKAIntersects((FVRect){0,900,430,332},view));
+ CHECK(!fvKAIntersects((FVRect){NAN,0,430,332},view));
+ /* Coverage is evaluated at native baseline, even if avoidance crosses the
+  * existing fullscreen threshold. Repeated refresh must not oscillate. */
+ FVRect tall={0,50,430,885};
+ for(int i=0;i<5;i++){
+  double amount=0;CHECK(fvKAPlan(tall,(FVRect){0,895,430,37},view,8,&amount)==FVKAMove);near(amount,48);
+  FVPoint origin=fvKABaseline((FVPoint){215,444.5},(FVPoint){215,444.5},(FVPoint){0,-48},1);
+  near(origin.y,492.5);near(origin.y-tall.height/2,50);
+ }
  printf("PASS keyboard avoidance: %d geometry, rotation, numeric and restoration checks\n",checks);
  return 0;
 }

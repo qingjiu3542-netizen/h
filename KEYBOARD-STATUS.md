@@ -18,7 +18,9 @@ UIScreen notification source and NSValue CGRect encoding are checked. CGRectValu
 
 Repeated notifications recompute from a baseline rather than adding movement. Hide, clear intersection, disabled ratio and pre-detach cleanup undo only the last displacement if this module still owns the center. Native layout or a user drag supersedes the old baseline. An item that cannot fit entirely above the keyboard is left to the native implementation; it is never pushed beyond the viewport top.
 
-The module has no setFrame hook. The already-existing item/host layout drain refreshes avoidance after original layout. The normal item didMoveToWindow handler is preserved, and superview changes detach the weak registry entry before native removal.
+The module has no setFrame hook. The already-existing item/host layout drain refreshes avoidance after original layout. The normal item didMoveToWindow handler is preserved. Item willMoveToWindow, item superview changes and host removal clean up before the old relationship is lost. The pre-window hook is installed only in keyboard-experiment. Original outer transforms temporarily retain ownership and disable additional displacement. Fullscreen coverage uses the native baseline, excluding this module's offset to prevent oscillation.
+
+A source-less hide may clear an existing session, but can never create movement. A screen-qualified keyboard frame entirely outside that screen ends the session. Events from another screen cannot replace an active session. These policies are also in the shared production core tests.
 
 ## Tests and build
 
@@ -35,7 +37,7 @@ https://developer.apple.com/documentation/uikit/uiresponder/keyboardwillchangefr
 ## Unresolved and required device checks
 
 - This is whole-item translation. It does not shorten app content or reposition an app-internal input bar. It does not resize a keyboard surface or fix keyboard clipping.
-- UIScreen notification objects are documented from iOS 16.1. A missing source is skipped rather than guessing mainScreen. SpringBoard notification delivery and native flag timing on the target device remain unverified.
+- UIScreen notification objects are documented from iOS 16.1. A missing source cannot initiate movement; a missing-source hide can only clean up existing movement. SpringBoard notification delivery and native flag timing on the target device remain unverified.
 - innerKeyboardIsDisplay is a native item state hint, not an authenticated association to a specific keyboard scene. Multiple active items are skipped.
 - No animation transaction matching has been added; updates currently apply center directly. Native keyboard and item animation interaction requires device traces.
 - Required device cases: show/change/hide, candidate and emoji height changes, interactive dismissal, drag while visible, device and Scene rotation, multi-item focus, close and recreate, fullscreen and return, ratio disable, external display, no observer lifetime leak.

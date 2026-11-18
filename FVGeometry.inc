@@ -12,6 +12,7 @@ static void fvGRequest(id o);
 static void fvKARefresh(void);
 static void fvKAObserveItem(id item);
 static void fvKADetach(id item);
+static Rect fvKANativeRect(id item,Rect visible,id window);
 static IMP fvGHostLayout, fvGHostFrame, fvGHostBounds;
 static IMP fvGItemLayout, fvGItemFrame, fvGItemBounds;
 static int fvGInstalled, fvGAttempts;
@@ -124,6 +125,7 @@ static int fvGWindowCoverage(id item,Rect itemBounds){
  if(!fvGHas(window,"bounds")||!fvGHas(item,"convertRect:toView:"))return -1;
  Rect windowBounds=rect(window,"bounds");
  Rect visible=((Rect(*)(id,SEL,Rect,id))objc_msgSend)(item,S("convertRect:toView:"),itemBounds,window);
+ visible=fvKANativeRect(item,visible,window);
  if(!fvGRect(windowBounds)||!fvGRect(visible))return -1;
  double insetX=windowBounds.size.width*0.05,insetY=windowBounds.size.height*0.05;
  return visible.origin.x<=windowBounds.origin.x+insetX&&
@@ -351,6 +353,10 @@ static void install(void *unused){
  if(is)fvGHook(fvGItemClass,"willMoveToSuperview:",(IMP)fvGItemSuperviewHook,&fvGItemWillSuperview);
  Method ww=class_getInstanceMethod(fvGHostClass,S("didMoveToWindow"));
  if(ww)fvGHook(fvGHostClass,"didMoveToWindow",(IMP)fvGHostWindowHook,&fvGHostWillWindow);
+#ifdef FV_KEYBOARD_AVOIDANCE
+ Method kwi=class_getInstanceMethod(fvGItemClass,S("willMoveToWindow:"));
+ if(kwi&&fvFMEncoding(method_getTypeEncoding(kwi)))fvGHook(fvGItemClass,"willMoveToWindow:",(IMP)fvKAItemWillWindowHook,&fvKAItemWillMoveWindow);
+#endif
  Method iw=class_getInstanceMethod(fvGItemClass,S("didMoveToWindow"));
  if(iw)fvGHook(fvGItemClass,"didMoveToWindow",(IMP)fvKAItemWindowHook,&fvGItemWillWindow);
  fvKAInstall(fvGItemClass);

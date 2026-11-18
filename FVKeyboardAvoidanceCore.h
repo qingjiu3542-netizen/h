@@ -11,6 +11,16 @@ static inline int fvKAFinite(double a){return __builtin_isfinite(a)&&a>-1000000&
 static inline int fvKAValidRect(FVRect r){
  return fvKAFinite(r.x)&&fvKAFinite(r.y)&&fvKAFinite(r.width)&&fvKAFinite(r.height)&&r.width>0&&r.height>0;
 }
+static inline int fvKAIntersects(FVRect a,FVRect b){
+ return fvKAValidRect(a)&&fvKAValidRect(b)&&a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
+}
+/* Event policy: a source-less hide may only clear an existing session;
+ * events from a different display never replace the current keyboard. */
+static inline int fvKAEvent(int active,int sourceKnown,int sourceMatches,int hiding,int visible){
+ if(hiding)return active&&(!sourceKnown||sourceMatches)?-1:0;
+ if(!sourceKnown||(active&&!sourceMatches))return 0;
+ return visible?1:-1;
+}
 static inline FVKAResult fvKAPlan(FVRect item,FVRect keyboard,FVRect viewport,double gap,double *offset){
  if(!offset)return FVKAInvalid;
  *offset=0;

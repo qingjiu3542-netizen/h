@@ -19,6 +19,18 @@ static BOOL fvKAIdentity(id item,id state){
  return host&&fvGIdentical(state,"parent",SEND(item,"superview"))&&
   fvGIdentical(state,"window",SEND(item,"window"))&&fvGIdentical(state,"scene",ivar(host,"appScene"));
 }
+/* Strip only our owned displacement for coverage tests. No geometry write. */
+static Rect fvKANativeRect(id item,Rect visible,id window){
+ id state=objc_getAssociatedObject(item,&fvKAStateKey);
+ if(state&&fvKAIdentity(item,state)){
+  Point now=fvGCenter(item),last=fvGUnboxPoint(state,"last"),delta=fvGUnboxPoint(state,"delta");
+  FVPoint base=fvKABaseline((FVPoint){now.x,now.y},(FVPoint){last.x,last.y},(FVPoint){delta.x,delta.y},1);
+  id parent=SEND(item,"superview");
+  Point p=fvKAConvertPoint(parent,now,window),b=fvKAConvertPoint(parent,(Point){base.x,base.y},window);
+  visible.origin.x+=b.x-p.x;visible.origin.y+=b.y-p.y;
+ }
+ return visible;
+}
 /* No raw host pointers in notifications: weak registry -> strong snapshot. */
 static void fvKARestore(id item){
  id state=objc_getAssociatedObject(item,&fvKAStateKey);if(!state)return;
@@ -41,6 +53,8 @@ static int fvKAFlag(id item,const char *name){
 static BOOL fvKAEligible(id item){
  id host=fvGTarget(item),w=SEND(item,"window");
  if(!host||!w||!SEND(item,"superview")||SEND(item,"isHidden")||SEND(w,"isHidden")||!enabled())return 0;
+ Transform identity={1,0,0,1,0,0};
+ if(!fvGSameTransform(trans(item),identity))return 0; /* native item animation owns geometry */
  if(!objc_getAssociatedObject(host,&fvGStateKey)||objc_getAssociatedObject(host,&fvGLeavingKey)||objc_getAssociatedObject(host,&fvGFullscreenKey))return 0;
  if(fvGWindowCoverage(item,rect(item,"bounds"))!=0)return 0;
  /* Unknown ownership is rejected; never move every floating item. */
@@ -83,23 +97,28 @@ static void fvKARefresh(void){
 }
 static void fvKANotification(id self,SEL cmd,id note){
  (void)self;(void)cmd;if(!fvGMain())return;
- id source=SEND(note,"object");
- if(!fvGKind(source,objc_getClass("UIScreen"))){trace("keyboard avoidance: notification screen unavailable; skipped");return;}
+ id source=SEND(note,"object");BOOL known=fvGKind(source,objc_getClass("UIScreen"));
  BOOL hiding=((BOOL(*)(id,SEL,id))objc_msgSend)(SEND(note,"name"),S("isEqualToString:"),str("UIKeyboardWillHideNotification"));
- /* A notification for another display must not replace an active session. */
- if(fvKAVisible&&source!=fvKAScreen)return;
- if(hiding){fvKAVisible=0;fvKARefresh();return;}
+ if(hiding){
+  if(fvKAEvent(fvKAVisible,known,source==fvKAScreen,1,0)==-1){fvKAVisible=0;fvKARefresh();SEND(fvKAScreen,"release");fvKAScreen=0;}
+  return;
+ }
+ if(!known||(fvKAVisible&&source!=fvKAScreen))return;
  id value=SEND(SEND(note,"userInfo"),"objectForKey:",str("UIKeyboardFrameEndUserInfoKey"));
  if(!fvGKind(value,objc_getClass("NSValue"))||!fvGHas(value,"CGRectValue"))return;
  const char *encoding=((const char*(*)(id,SEL))objc_msgSend)(value,S("objCType"));
  if(!encoding||__builtin_strcmp(encoding,"{CGRect={CGPoint=dd}{CGSize=dd}}"))return;
  Rect r=rect(value,"CGRectValue");if(!fvGRect(r))return;
+ Rect screenBounds=rect(source,"bounds");if(!fvGRect(screenBounds))return;
+ int event=fvKAEvent(fvKAVisible,1,source==fvKAScreen,0,fvKAIntersects(fvKARect(r),fvKARect(screenBounds)));
+ if(event<0){fvKAVisible=0;fvKARefresh();SEND(fvKAScreen,"release");fvKAScreen=0;return;}
+ if(!event)return;
  SEND(source,"retain");SEND(fvKAScreen,"release");fvKAScreen=source;fvKAKeyboard=r;fvKAVisible=1;fvKARefresh();
 }
 static void fvKAObserveItem(id item){
  if(fvKAItems&&fvGMain()&&SEND(item,"window"))SEND(fvKAItems,"addObject:",item);
 }
-static void fvKADetach(id item){if(!fvGMain())return;fvKARestore(item);if(fvKAItems)SEND(fvKAItems,"removeObject:",item);}
+static void fvKADetach(id item){if(!item||!fvGMain()||!fvGKind(item,fvGItemClass))return;fvKARestore(item);if(fvKAItems)SEND(fvKAItems,"removeObject:",item);}
 static void fvKAInstall(Class itemClass){
  (void)itemClass;if(fvKAObserver)return;
  fvKAItems=SEND(SEND(objc_getClass("NSHashTable"),"weakObjectsHashTable"),"retain");
@@ -110,6 +129,7 @@ static void fvKAInstall(Class itemClass){
  for(unsigned i=0;i<4;i++)SEND(nc,"addObserver:selector:name:object:",fvKAObserver,S("keyboardFrameChanged:"),str(names[i]),(id)0);
 }
 #else
+static Rect fvKANativeRect(id item,Rect visible,id window){(void)item;(void)window;return visible;}
 static void fvKARefresh(void){}
 static void fvKAObserveItem(id item){(void)item;}
 static void fvKADetach(id item){(void)item;}
