@@ -363,6 +363,7 @@ static BOOL fvGCanHook(Class c){
 }
 #include "FVFirstMount.inc"
 #include "FVKeyboardAvoidance.inc"
+#include "FVKeyboardGeometryProbe.inc"
 #include "FVLifecycle.inc"
 static void fvKAItemWindowHook(id self,SEL cmd){
  fvGItemWindowHook(self,cmd);
@@ -413,6 +414,9 @@ static void install(void *unused){
  fvFMInstall(fvGHostClass);
 #endif
  fvKAInstall(fvGItemClass);
+#ifdef FV_KEYBOARD_GEOMETRY_PROBE
+ fvKGPInstall();
+#endif
  fvGInstalled=1;
  trace("geometry hooks installed with bounded native restoration");
 }

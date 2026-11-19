@@ -8,17 +8,18 @@ def capture(*args):
  return subprocess.check_output(list(map(str,args)),cwd=R,text=True).strip()
 sdk=capture('xcrun','--sdk','iphoneos','--show-sdk-path')
 (B/'toolchain.txt').write_text(capture('xcodebuild','-version')+'\n'+capture('xcrun','clang','--version')+'\nSDK: '+sdk+'\n')
-for test in ('test-first-mount','test-first-presentation','test-restore','test-keyboard-avoidance','test-ratio-activation'):
+for test in ('test-first-mount','test-first-presentation','test-restore','test-keyboard-avoidance','test-ratio-activation','test-keyboard-mode'):
  exe=B/test
  run('xcrun','clang','-std=c11','-Wall','-Wextra','-Werror',R/(test+'.c'),'-o',exe)
  run(exe)
 summary=[]
-for mode in ('baseline','probe','first-mount','keyboard-experiment'):
+for mode in ('baseline','probe','first-mount','keyboard-experiment','keyboard-geometry-probe'):
  for arch in ('arm64','arm64e'):
   out=B/(mode+'-'+arch+'.dylib')
   flags={'probe':['-DFV_FIRST_PRESENTATION_PROBE=1'],
          'first-mount':['-DFV_DIRECT_ENTRY=1','-DFV_FIRST_MOUNT_MODE=1'],
          'keyboard-experiment':['-DFV_FIRST_MOUNT_MODE=1','-DFV_COMPLETE_MODE=1','-DFV_KEYBOARD_AVOIDANCE=1'],
+         'keyboard-geometry-probe':['-DFV_FIRST_MOUNT_MODE=1','-DFV_COMPLETE_MODE=1','-DFV_KEYBOARD_GEOMETRY_PROBE=1'],
          'baseline':['-DFV_DIRECT_ENTRY=1']}[mode]
   run('xcrun','--sdk','iphoneos','clang','-arch',arch,'-isysroot',sdk,
       '-miphoneos-version-min=14.0','-dynamiclib','-fPIC','-O2','-g',
