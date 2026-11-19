@@ -55,6 +55,17 @@ static void fvGRCommit(void *v){
 static FVRestoreResult fvGRestore(id h,int mode){
  id state=objc_getAssociatedObject(h,&fvGStateKey);
  if(!state)return FVRestoreDone;
+ id liveScene=ivar(h,"appScene");
+ FVSceneRelation relation=fvRestoreSceneRelation(fvGGet(state,"scene")?SEND(fvGGet(state,"scene"),"pointerValue"):0,liveScene);
+ if(relation==FVSceneMissing){trace("restore pending: live scene unavailable");return FVRestoreUnavailable;}
+ if(relation==FVSceneReplaced){
+  if(objc_getAssociatedObject(h,&fvGStateKey)==state){
+   objc_setAssociatedObject(h,&fvGStateKey,0,1);
+   objc_setAssociatedObject(h,&fvGFullscreenKey,0,1);
+   trace("restore retired: replaced scene; old snapshot not replayed");
+  }
+  return FVRestoreIdentity;
+ }
  SEND(state,"retain");
  FVRestoreContext c={h,state,ivar(h,"appScene"),ivar(h,"appSetting"),0,mode,fvGUnboxRect(state,"sceneFrame")};
  SEND(c.scene,"retain");SEND(c.cached,"retain");
@@ -67,8 +78,9 @@ static FVRestoreResult fvGRestore(id h,int mode){
   fvGPut(state,"restorePending",SEND(objc_getClass("NSNumber"),"numberWithInt:",1));
   fvGPut(state,"restoreResult",SEND(objc_getClass("NSNumber"),"numberWithInt:",(U)result));
   trace(result==FVRestoreOrientation?"restore pending: orientation differs; snapshot retained":
-   result==FVRestoreIdentity?"restore blocked: scene identity differs; snapshot retained":
-   "restore pending: settings unavailable or unaccepted; snapshot retained");
+   result==FVRestoreIdentity?"restore blocked: identity changed during transaction; snapshot retained":
+   result==FVRestoreUnavailable?"restore pending: settings unavailable or submission rejected; snapshot retained":
+   "restore pending: settings not accepted; snapshot retained");
  }else trace("saved scene frame accepted; client rendering not verified");
  objc_setAssociatedObject(h,&fvGBusyKey,priorBusy,1);SEND(priorBusy,"release");
  SEND(c.cached,"release");SEND(c.scene,"release");SEND(state,"release");return result;

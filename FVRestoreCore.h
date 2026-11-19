@@ -5,6 +5,11 @@ typedef enum {
  FVRestoreDone=1, FVRestoreIdentity=-1, FVRestoreOrientation=-2,
  FVRestoreUnavailable=-3, FVRestoreUnaccepted=-4
 } FVRestoreResult;
+typedef enum { FVSceneCurrent=1, FVSceneMissing=0, FVSceneReplaced=-1 } FVSceneRelation;
+static FVSceneRelation fvRestoreSceneRelation(const void *saved,const void *live){
+ if(!live)return FVSceneMissing;
+ return saved==live?FVSceneCurrent:FVSceneReplaced;
+}
 typedef struct {
  void *context;
  int (*identity)(void *);

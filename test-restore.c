@@ -37,5 +37,11 @@ int main(void){
  assert(!fvRestoreCallbackCurrent(&t1,0,&s1,&s1,&p1,&p1));
  assert(!fvRestoreCallbackCurrent(0,0,&s1,&s1,&p1,&p1));
  assert(fvRestoreCallbackCurrent(&t1,&t1,&s1,&s1,0,0));
- printf("PASS: %d restore transaction scenarios + 7 callback identity cases\n",cases);
+ int relationCases=0;
+ int sceneA,sceneB;
+ assert(fvRestoreSceneRelation(&sceneA,&sceneA)==FVSceneCurrent);
+ assert(fvRestoreSceneRelation(&sceneA,0)==FVSceneMissing);
+ assert(fvRestoreSceneRelation(&sceneA,&sceneB)==FVSceneReplaced);
+ relationCases+=3;
+ printf("PASS: %d restore transaction scenarios + 7 callback identity cases + %d scene relation cases\n",cases,relationCases);
 }
