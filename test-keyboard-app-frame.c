@@ -24,6 +24,11 @@ int main(void){
   int flags[5]={1,1,1,1,1};flags[field]=0;
   assert(!fvKAFAuthorize(flags[0],flags[1],flags[2],flags[3],flags[4],now,now,target,target));n++;
  }
+ assert(fvKAFEventScreenMatch(0,0,0));n++;
+ assert(fvKAFEventScreenMatch(1,1,1));n++;
+ assert(!fvKAFEventScreenMatch(1,0,0));n++;
+ assert(!fvKAFEventScreenMatch(1,1,0));n++;
+ assert(!fvKAFEventScreenMatch(1,0,1));n++;
  assert(!fvKAFAuthorize(1,1,1,1,1,now,now-121,target,target));n++;
  assert(!fvKAFAuthorize(1,1,1,1,1,now,now+1,target,target));n++;
  assert(!fvKAFAuthorize(1,1,1,1,1,NAN,now,target,target));n++;

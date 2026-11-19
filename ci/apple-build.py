@@ -14,6 +14,7 @@ for test in ('test-first-mount','test-first-presentation','test-restore','test-k
  run(exe)
 run('python3',R/'test-keyboard-native-adapter.py')
 run('python3',R/'test-keyboard-app-forwarding.py')
+run('python3',R/'test-keyboard-app-filter.py')
 summary=[]
 for mode in ('baseline','probe','first-mount','keyboard-experiment','keyboard-geometry-probe','keyboard-dock-experiment','portrait-avoidance-experiment','keyboard-app-avoidance'):
  for arch in ('arm64','arm64e'):

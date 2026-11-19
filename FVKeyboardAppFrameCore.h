@@ -5,6 +5,9 @@
 typedef struct {double x,y,width,height;} FVKARect;
 static inline int fvKAFNumber(double v){return __builtin_isfinite(v)&&__builtin_fabs(v)<1000000;}
 static inline int fvKAFRect(FVKARect r){return fvKAFNumber(r.x)&&fvKAFNumber(r.y)&&fvKAFNumber(r.width)&&fvKAFNumber(r.height)&&r.width>0&&r.height>0;}
+static inline int fvKAFEventScreenMatch(int hasObject,int objectIsScreen,int sameScreen){
+ return !hasObject||(objectIsScreen==1&&sameScreen==1);
+}
 static inline int fvKAFNear(double a,double b){return __builtin_fabs(a-b)<0.6;}
 static inline int fvKAFAuthorize(int sameScene,int foreground,int keyWindow,int portrait,int inner,
  double now,double stamp,FVKARect local,FVKARect target){
