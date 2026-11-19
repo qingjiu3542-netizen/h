@@ -284,11 +284,7 @@ static void fvGApply(id h){
   fvGPut(state,"sceneFrame",fvGBoxRect(sf));
   objc_setAssociatedObject(h,&fvGStateKey,state,1);
  }
- if(fvGSceneFrame(scene,settings,cached,targetScene)){
-#ifdef FV_COMPLETE_MODE
-  fvFMMarkApplied(h);
-#endif
- }else{
+ if(fvGSceneFrame(scene,settings,cached,targetScene)){ }else{
   fvGDecision(13,"ratio 0.1.4: Scene frame not accepted; retry pending");goto retry;
  }
  if(objc_getAssociatedObject(h,&fvGStateKey)!=state||ivar(h,"appScene")!=scene||
@@ -312,6 +308,7 @@ static void fvGApply(id h){
   fvGDecision(15,"ratio: host/remote presentation readback mismatch; bounded retry pending");goto retry;
  }
  fvGDecision(16,"ratio: first presentation geometry verified");
+ fvFMMarkApplied(h);
 #endif
  done:objc_setAssociatedObject(h,&fvGBusyKey,0,1);
  return;
