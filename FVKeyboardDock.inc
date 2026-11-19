@@ -133,6 +133,9 @@ static void fvKDDock(id work){
  /* Rotation is deliberately left native in this first runtime experiment. */
  if(orientation!=1){fvKDReport("KB dock skipped: portrait-only runtime experiment");return;}
  FVKAOriginalMode mode=fvKDMode(orientation);
+#ifdef FV_KEYBOARD_APP_AVOIDANCE_BRIDGE
+ if(mode!=FVKAOriginalModeInner)fvKDClearHostTicket(host);
+#endif
  if(mode==FVKAOriginalModeUnknown)return;
  if(mode==FVKAOriginalModeOuter){
   Class owner=objc_getClass("_TtC12floatingView16FVKeyboardWindow");
@@ -174,9 +177,9 @@ static void fvKDDock(id work){
  FVRect source={nativeBounds.origin.x,nativeBounds.origin.y,nativeBounds.size.width,nativeBounds.size.height};
  FVRect keys={nativeBounds.origin.x+fvKDKeys.origin.x-screenBounds.origin.x,
   nativeBounds.origin.y+fvKDKeys.origin.y-screenBounds.origin.y,fvKDKeys.size.width,fvKDKeys.size.height};
- /* Six window-coordinate points of inner-bottom clearance. Convert using
-  * the measured parent basis instead of assuming the parent is unscaled. */
- double bottomGap=mode==FVKAOriginalModeInner?6.0/(py.y-p0.y):0;
+ /* User requested removal of the experimental extra bottom clearance.
+  * Native keyboard artwork/safe-area padding remains unchanged. */
+ double bottomGap=0;
  FVKeyboardDockPlan plan;
  if(!fvKeyboardDockPlanWithGap(source,keys,(FVRect){target.origin.x,target.origin.y,target.size.width,target.size.height},
     target.size.width/logical.size.width,mode==FVKAOriginalModeInner,bottomGap,&plan)){
@@ -202,6 +205,9 @@ static void fvKDDock(id work){
   fvKDWriting=0;
   if(fvKDCurrent(work,parent,window)&&version==fvKDVersion&&fvKDOwns(layer,state)){
    objc_setAssociatedObject(layer,&fvKDStateKey,state,1);SEND(fvKDLayers,"addObject:",layer);
+#ifdef FV_KEYBOARD_APP_AVOIDANCE_BRIDGE
+   fvKDPublishHost(host);
+#endif
    extern int snprintf(char *,U,const char *,...);
    char report[320];
    snprintf(report,sizeof report,"KB dock applied: mode=%s sourceKeys=%.1fx%.1f scale=%.4f keys=%.1f,%.1f,%.1f,%.1f reservedLogical=%.1f inputInsetImplemented=0",
@@ -216,6 +222,9 @@ static void fvKDDock(id work){
  SEND(window,"release");SEND(parent,"release");SEND(layer,"release");SEND(state,"release");
 }
 static void fvKDDropForHost(id host){
+#ifdef FV_KEYBOARD_APP_AVOIDANCE_BRIDGE
+ fvKDClearHostTicket(host);
+#endif
  if(!fvGMain()||!host||fvKDWriting||!fvKDLayers)return;
  id layers=SEND(SEND(fvKDLayers,"allObjects"),"retain");U n=(U)SEND(layers,"count");
  for(U i=0;i<n;i++){

@@ -8,13 +8,14 @@ def capture(*args):
  return subprocess.check_output(list(map(str,args)),cwd=R,text=True).strip()
 sdk=capture('xcrun','--sdk','iphoneos','--show-sdk-path')
 (B/'toolchain.txt').write_text(capture('xcodebuild','-version')+'\n'+capture('xcrun','clang','--version')+'\nSDK: '+sdk+'\n')
-for test in ('test-first-mount','test-first-presentation','test-restore','test-keyboard-avoidance','test-ratio-activation','test-keyboard-mode','test-presentation-commit','test-keyboard-dock','test-keyboard-native-flags'):
+for test in ('test-first-mount','test-first-presentation','test-restore','test-keyboard-avoidance','test-ratio-activation','test-keyboard-mode','test-presentation-commit','test-keyboard-dock','test-keyboard-native-flags','test-keyboard-app-frame'):
  exe=B/test
  run('xcrun','clang','-std=c11','-Wall','-Wextra','-Werror',R/(test+'.c'),'-o',exe)
  run(exe)
 run('python3',R/'test-keyboard-native-adapter.py')
+run('python3',R/'test-keyboard-app-forwarding.py')
 summary=[]
-for mode in ('baseline','probe','first-mount','keyboard-experiment','keyboard-geometry-probe','keyboard-dock-experiment'):
+for mode in ('baseline','probe','first-mount','keyboard-experiment','keyboard-geometry-probe','keyboard-dock-experiment','portrait-avoidance-experiment','keyboard-app-avoidance'):
  for arch in ('arm64','arm64e'):
   out=B/(mode+'-'+arch+'.dylib')
   flags={'probe':['-DFV_FIRST_PRESENTATION_PROBE=1'],
@@ -22,11 +23,14 @@ for mode in ('baseline','probe','first-mount','keyboard-experiment','keyboard-ge
          'keyboard-experiment':['-DFV_FIRST_MOUNT_MODE=1','-DFV_COMPLETE_MODE=1','-DFV_KEYBOARD_AVOIDANCE=1'],
          'keyboard-geometry-probe':['-DFV_FIRST_MOUNT_MODE=1','-DFV_COMPLETE_MODE=1','-DFV_KEYBOARD_GEOMETRY_PROBE=1'],
          'keyboard-dock-experiment':['-DFV_FIRST_MOUNT_MODE=1','-DFV_COMPLETE_MODE=1','-DFV_KEYBOARD_GEOMETRY_PROBE=1','-DFV_KEYBOARD_DOCK_EXPERIMENT=1'],
+         'portrait-avoidance-experiment':['-DFV_FIRST_MOUNT_MODE=1','-DFV_COMPLETE_MODE=1','-DFV_KEYBOARD_GEOMETRY_PROBE=1','-DFV_KEYBOARD_DOCK_EXPERIMENT=1','-DFV_KEYBOARD_APP_AVOIDANCE_BRIDGE=1'],
+         'keyboard-app-avoidance':[],
          'baseline':['-DFV_DIRECT_ENTRY=1']}[mode]
+  source=R/('FVKeyboardAppAvoidance.c' if mode=='keyboard-app-avoidance' else 'FVIndependent.c')
   run('xcrun','--sdk','iphoneos','clang','-arch',arch,'-isysroot',sdk,
       '-miphoneos-version-min=14.0','-dynamiclib','-fPIC','-O2','-g',
-      '-Werror=implicit-function-declaration',*flags,R/'FVIndependent.c',
-      '-framework','Foundation','-lobjc','-Wl,-undefined,error',
+      '-Werror=implicit-function-declaration',*flags,source,
+      '-framework','Foundation','-framework','CoreFoundation','-lobjc','-Wl,-undefined,error',
       '-Wl,-install_name,@rpath/FVIndependent-'+mode+'.dylib','-o',out)
   data=out.read_bytes();magic,cpu,sub=struct.unpack_from('<III',data)
   assert magic==0xfeedfacf and cpu==0x100000c

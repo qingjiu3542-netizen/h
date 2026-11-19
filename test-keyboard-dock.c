@@ -44,5 +44,17 @@ int main(void){
  assert(!fvKeyboardDockPlanWithGap(source,keys,host,.7,1,host.height,&p));cases++;
  assert(fvKeyboardDockPlanWithGap(source,keys,host,.7,0,6,&p));
  assert(near(p.keys.y,host.y+host.height)&&p.reservedLogicalHeight==0);cases++;
+ /* Latest device report: 430x764.444 app, 430x932 keyboard canvas.
+  * Removing the experimental gap must not alter source key height or add
+  * an unimplemented input inset. Both candidate and plain heights dock. */
+ const double deviceHeights[]={378,301};
+ for(unsigned i=0;i<2;i++){
+  FVRect actualKeys={0,932-deviceHeights[i],430,deviceHeights[i]};
+  FVRect logicalHost={0,0,430,430*16.0/9.0};
+  assert(fvKeyboardDockPlanWithGap(source,actualKeys,logicalHost,1,1,0,&p));
+  assert(near(p.keys.y+p.keys.height,logicalHost.height));
+  assert(near(p.keys.height,deviceHeights[i]));
+  assert(near(p.reservedLogicalHeight,deviceHeights[i]));cases++;
+ }
  printf("PASS keyboard dock: %d source-key-region, uniform-scale and bottom-clearance scenarios\n",cases);
 }

@@ -12,6 +12,10 @@ static void fvGRequest(id o);
 static void fvKARefresh(void);
 static void fvKAObserveItem(id item);
 static void fvKADetach(id item);
+#ifdef FV_KEYBOARD_APP_AVOIDANCE_BRIDGE
+static void fvKDPublishHost(id host);
+static void fvKDClearHostTicket(id host);
+#endif
 #ifdef FV_KEYBOARD_DOCK_EXPERIMENT
 static void fvKDDropForHost(id host);
 #endif
@@ -368,6 +372,9 @@ static void fvGApply(id h){
  fvGDecision(16,"ratio: first presentation geometry verified");
  fvFMMarkApplied(h);
 #endif
+#ifdef FV_KEYBOARD_APP_AVOIDANCE_BRIDGE
+ fvKDPublishHost(h);
+#endif
  done:objc_setAssociatedObject(h,&fvGBusyKey,0,1);
  return;
  retry:
@@ -441,6 +448,7 @@ static BOOL fvGCanHook(Class c){
 #include "FVFirstMount.inc"
 #include "FVKeyboardAvoidance.inc"
 #include "FVKeyboardGeometryProbe.inc"
+#include "FVKeyboardAppBridge.inc"
 #include "FVLifecycle.inc"
 static void fvKAItemWindowHook(id self,SEL cmd){
  fvGItemWindowHook(self,cmd);
