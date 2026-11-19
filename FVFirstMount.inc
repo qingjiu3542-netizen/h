@@ -103,24 +103,56 @@ static BOOL fvFMPrepare(id host,id child){
 }
 #if defined(FV_COMPLETE_MODE)
 #include "FVRatioActivationCore.h"
-/* Retry the live mount, not a stale layout snapshot. No Scene writes here. */
+/* A new mount replaces the token, including detach/re-attach of the same
+ * objects. Saved window and parent identities prevent writes across sessions. */
+static char fvFMMountTokenKey, fvFMMountRetryCountKey;
+static void fvFMRetryWork(void *context){
+ id work=context,host=fvGGet(work,"host"),token=fvGGet(work,"token");
+ id scene=fvGGet(work,"scene"),child=fvGGet(work,"child");
+ if(host&&token==objc_getAssociatedObject(host,&fvFMMountTokenKey)&&
+    enabled()&&!objc_getAssociatedObject(host,&fvGLeavingKey)&&
+    ivar(host,"appScene")==scene&&ivar(host,"hostingView")==child&&
+    SEND(host,"superview")==fvGGet(work,"parent")&&SEND(host,"window")==fvGGet(work,"window"))
+  fvGRequest(host);
+ SEND(work,"release");
+}
+static void fvFMScheduleRetry(id host){
+ if(!host||!enabled()||objc_getAssociatedObject(host,&fvGLeavingKey))return;
+ id token=objc_getAssociatedObject(host,&fvFMMountTokenKey),child=ivar(host,"hostingView"),scene=ivar(host,"appScene");
+ id parent=SEND(host,"superview"),window=SEND(host,"window");if(!token||!child||!scene||!parent||!window)return;
+ id old=objc_getAssociatedObject(host,&fvFMMountRetryCountKey);long n=old?(long)SEND(old,"longValue"):0;
+ if(n>=6)return;
+ id next=SEND(objc_getClass("NSNumber"),"numberWithLong:",(U)(n+1));objc_setAssociatedObject(host,&fvFMMountRetryCountKey,next,1);
+ id work=SEND(objc_getClass("NSMutableDictionary"),"dictionary");
+ fvGPut(work,"host",host);fvGPut(work,"child",child);fvGPut(work,"scene",scene);fvGPut(work,"parent",parent);fvGPut(work,"window",window);fvGPut(work,"token",token);
+ SEND(work,"retain");dispatch_after_f(dispatch_time(0,100000000LL),&_dispatch_main_q,work,fvFMRetryWork);
+}
+static void fvFMMarkApplied(id host){
+ if(host)objc_setAssociatedObject(host,&fvFMMountRetryCountKey,SEND(objc_getClass("NSNumber"),"numberWithLong:",0),1);
+}
 static void fvFMMountRetry(void *context){
- id work=context,host=fvGGet(work,"host"),child=fvGGet(work,"child"),scene=fvGGet(work,"scene");
- if(!fvRACurrent(host,scene,child,ivar(host,"appScene"),fvGGet(work,"scene"),
-      ivar(host,"hostingView"),host,SEND(child,"superview"),SEND(host,"window"),SEND(child,"window"),1)){
-  SEND(work,"release");return;
- }
- if(fvRACurrent(host,scene,child,ivar(host,"appScene"),scene,ivar(host,"hostingView"),
-     host,SEND(child,"superview"),SEND(host,"window"),SEND(child,"window"),enabled()))fvGRequest(host);
+ id work=context,host=fvGGet(work,"host"),child=fvGGet(work,"child");
+ FVRAMount saved={.host=host,.scene=fvGGet(work,"scene"),.child=child,
+  .parent=fvGGet(work,"parent"),.window=fvGGet(work,"window"),.token=fvGGet(work,"token")};
+ FVRAMount live={.host=host,.scene=ivar(host,"appScene"),.child=ivar(host,"hostingView"),
+  .parent=SEND(host,"superview"),.window=SEND(host,"window"),.token=objc_getAssociatedObject(host,&fvFMMountTokenKey)};
+ if(fvRAMountCurrent(saved,live,enabled(),objc_getAssociatedObject(host,&fvGLeavingKey)!=0)&&
+    SEND(child,"superview")==host&&SEND(child,"window")==live.window)fvGRequest(host);
  SEND(work,"release");
 }
 static void fvFMRequestMount(id host,id child){
  if(!fvGMain()||!enabled()||!child||ivar(host,"hostingView")!=child||SEND(child,"superview")!=host)return;
- id scene=ivar(host,"appScene");if(!scene)return;
- fvGRequest(host);
- id work=SEND(objc_getClass("NSMutableDictionary"),"dictionary");if(!work)return;
+ id scene=ivar(host,"appScene"),parent=SEND(host,"superview"),window=SEND(host,"window");
+ if(!scene||!parent||!window)return; /* didMoveToWindow will call us again */
+ id token=SEND(objc_getClass("NSObject"),"new");
+ objc_setAssociatedObject(host,&fvFMMountTokenKey,token,1);
+ id work=SEND(objc_getClass("NSMutableDictionary"),"dictionary");
  fvGPut(work,"host",host);fvGPut(work,"child",child);fvGPut(work,"scene",scene);
- for(int i=1;i<=2;i++)dispatch_after_f(dispatch_time(0,i*80000000LL),&_dispatch_main_q,SEND(work,"retain"),fvFMMountRetry);
+ fvGPut(work,"parent",parent);fvGPut(work,"window",window);fvGPut(work,"token",token);
+ SEND(token,"release");fvGRequest(host);
+ const long long delays[]={40000000LL,120000000LL,260000000LL,500000000LL};
+ for(unsigned i=0;i<4;i++)dispatch_after_f(dispatch_time(0,delays[i]),&_dispatch_main_q,SEND(work,"retain"),fvFMMountRetry);
+ trace("ratio mount 0.1.4: post-mount layout and bounded retries armed");
 }
 #endif
 static void fvFMHostAddHook(id self,SEL cmd,id child){

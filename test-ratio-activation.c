@@ -12,6 +12,23 @@ int main(void){
  assert(!fvRACurrent(&h,&s,&c,&h,&s,&other,&p,&p,&w,&w,1));
  assert(!fvRACurrent(&h,&s,&c,&h,&s,&c,&p,&other,&w,&w,1));
  assert(!fvRACurrent(&h,&s,&c,&h,&s,&c,&p,&p,&w,&other,1));
+ FVRAMount saved={&h,&s,&c,&p,&w,&h},live=saved;
+ assert(fvRAMountCurrent(saved,live,1,0));
+ live.token=&other;assert(!fvRAMountCurrent(saved,live,1,0));
+ live=saved;live.scene=&other;assert(!fvRAMountCurrent(saved,live,1,0));
+ live=saved;live.window=&other;assert(!fvRAMountCurrent(saved,live,1,0));
+ assert(!fvRAMountCurrent(saved,saved,0,0));
+ assert(!fvRAMountCurrent(saved,saved,1,1));
+ assert(fvKAOriginalMode("inner")==FVKAOriginalModeInner);
+ assert(fvKAOriginalMode("outer")==FVKAOriginalModeOuter);
+ assert(fvKAOriginalMode("native")==FVKAOriginalModeUnknown);
+ assert(fvKAOriginalMode(0)==FVKAOriginalModeUnknown);
+ assert(fvKAShouldAdapt(FVKAOriginalModeInner,1,1,1));
+ assert(fvKAShouldAdapt(FVKAOriginalModeOuter,1,1,1));
+ assert(!fvKAShouldAdapt(FVKAOriginalModeUnknown,1,1,1));
+ assert(!fvKAShouldAdapt(FVKAOriginalModeInner,0,1,1));
+ assert(!fvKAShouldAdapt(FVKAOriginalModeOuter,1,0,1));
+ assert(!fvKAShouldAdapt(FVKAOriginalModeInner,1,1,2));
  assert(fvRAShouldApply(1,1,1,1,0));
  assert(!fvRAShouldApply(0,1,1,1,0));
  assert(!fvRAShouldApply(1,0,1,1,0));
@@ -25,6 +42,10 @@ int main(void){
  assert(!fvKAAffineIsSimilarity(1,0,0,.9));
  assert(!fvKAAffineIsSimilarity(1,0,.2,1));
  assert(!fvKAAffineIsSimilarity(NAN,0,0,1));
- puts("PASS ratio activation: post-mount identity, original transforms, default and fullscreen");
+ assert(fvKAOriginalMode("inner")==FVKAOriginalModeInner);
+ assert(fvKAOriginalMode("outer")==FVKAOriginalModeOuter);
+ assert(fvKAOriginalMode("native")==FVKAOriginalModeUnknown);
+ assert(fvKAOriginalMode(0)==FVKAOriginalModeUnknown);
+ puts("PASS ratio activation: remount identities, original mode values, transforms and fullscreen");
  return 0;
 }

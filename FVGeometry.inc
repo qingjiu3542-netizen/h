@@ -12,6 +12,10 @@ static void fvGRequest(id o);
 static void fvKARefresh(void);
 static void fvKAObserveItem(id item);
 static void fvKADetach(id item);
+#ifdef FV_COMPLETE_MODE
+static void fvFMRequestMount(id host,id child);
+static void fvFMMarkApplied(id host);
+#endif
 static Rect fvKANativeRect(id item,Rect visible,id window);
 static IMP fvGHostLayout, fvGHostFrame, fvGHostBounds;
 static IMP fvGItemLayout, fvGItemFrame, fvGItemBounds;
@@ -139,17 +143,27 @@ static void fvGDecision(unsigned code,const char *message){
  unsigned bit=1u<<code;
  if(!(reported&bit)){reported|=bit;trace(message);}
 }
+#ifdef FV_COMPLETE_MODE
+static void fvFMScheduleRetry(id host);
+#endif
 static void fvGApply(id h){
  if(!fvGMain()||objc_getAssociatedObject(h,&fvGBusyKey))return;
  id p=SEND(h,"superview"),scene=ivar(h,"appScene"),r=ivar(h,"hostingView"),cached=ivar(h,"appSetting");
  id state=objc_getAssociatedObject(h,&fvGStateKey),settings=0;
  int active=enabled();
- if(state && (!active || !fvGIdentical(state,"parent",p) ||
-    !fvGIdentical(state,"scene",scene) || !fvGIdentical(state,"remote",r) ||
-    fvGGet(state,"restorePending"))){
+ /* A replacement Scene owns its own native baseline. Never send the old
+  * snapshot to it, or keep retrying an identity check that cannot succeed. */
+ if(state&&!scene)return; /* A temporarily empty ivar is not a new Scene. */
+ if(state&&!fvGIdentical(state,"scene",scene)){
+  objc_setAssociatedObject(h,&fvGStateKey,0,1);state=0;
+  objc_setAssociatedObject(h,&fvGFullscreenKey,0,1);
+  trace("ratio 0.1.4: replaced scene; retired old snapshot without replay");
+ }
+ BOOL rebound=state&&(!fvGIdentical(state,"parent",p)||!fvGIdentical(state,"remote",r));
+ if(state&&(!active||fvGGet(state,"restorePending"))){
   int mode=fvGGet(state,"restorePending")?(int)(long)SEND(fvGGet(state,"restoreMode"),"longValue"):0;
-  if(!fvGIdentical(state,"parent",p)||!fvGIdentical(state,"remote",r))mode=2;
-  fvGRestore(h,mode);
+  if(rebound)mode=2;
+  if(fvGRestore(h,mode)==FVRestoreDone&&active)fvGDecision(5,"ratio 0.1.4: restored before next mount pass");
   return;
  }
  if(!active){fvGDecision(0,"ratio 0.1.2: preference off in SpringBoard");return;}
@@ -179,14 +193,14 @@ static void fvGApply(id h){
  BOOL deviceLandscape=deviceOrientation==3||deviceOrientation==4;
  long orientation=sceneOrientation;
  objc_setAssociatedObject(h,&fvGBusyKey,SEND(objc_getClass("NSNumber"),"numberWithInt:",1),1);
- if(orientation<1||orientation>4)goto done;
+ if(orientation<1||orientation>4){fvGDecision(6,"ratio 0.1.4: interface orientation unavailable");goto retry;}
  BOOL landscape=orientation==3||orientation==4;
  /* A landscape device or landscape scene does not cancel the virtual
   * portrait scene. The scene orientation is retained in the transform below;
   * the logical scene remains 9:16 and the host remains independently sized. */
  (void)deviceLandscape;
  int coverage=fvGWindowCoverage(p,pb);
- if(coverage<0)goto done;
+ if(coverage<0){fvGDecision(7,"ratio 0.1.4: fullscreen coverage unavailable");goto retry;}
  if(coverage){
   if(!state){
    objc_setAssociatedObject(h,&fvGFullscreenKey,SEND(objc_getClass("NSNumber"),"numberWithInt:",1),1);
@@ -204,27 +218,29 @@ static void fvGApply(id h){
  /* The scene frame may itself be landscape. Its short edge is the
   * portrait logical width; the long edge is produced by the 16:9 ratio. */
  Rect nativeFrame=state?fvGUnboxRect(state,"sceneFrame"):sf;
- if(!fvGRect(nativeFrame))goto done;
+ if(!fvGRect(nativeFrame)){fvGDecision(8,"ratio 0.1.4: native Scene frame unavailable");goto retry;}
  Rect targetScene=fvGTargetSceneFrame(nativeFrame,orientation);
- if(!fvGRect(targetScene))goto done;
+ if(!fvGRect(targetScene)){fvGDecision(9,"ratio 0.1.4: target Scene frame rejected");goto retry;}
  double baseWidth=landscape?targetScene.size.height:targetScene.size.width;
  double displayWidth=pb.size.width;
  FVVirtualGeometry vg={0};
- if(!fvGComputeVirtual(baseWidth,displayWidth,9.0/16.0,&vg))goto done;
+ if(!fvGComputeVirtual(baseWidth,displayWidth,9.0/16.0,&vg))goto retry;
  double displayHeight=vg.hostSize.height;
  double scale=vg.visualScale;
- if(!fvGNumber(scale)||scale<=0||!fvGNumber(displayHeight))goto done;
+ if(!fvGNumber(scale)||scale<=0||!fvGNumber(displayHeight)){fvGDecision(10,"ratio 0.1.4: display geometry rejected");goto retry;}
  /* Preserve the original helper's rotation. Accept only an existing uniform,
   * orthogonal, orientation-compatible transform; wait for original geometry
   * when orientation and remote transform disagree. Translation is retained. */
  double norm=sqrt(rt.a*rt.a+rt.b*rt.b);
- if(!fvGNumber(norm)||norm<0.000001)goto done;
+ if(!fvGNumber(norm)||norm<0.000001){fvGDecision(11,"ratio 0.1.4: remote transform unavailable");goto retry;}
  Transform rotation=rt;rotation.a/=norm;rotation.b/=norm;rotation.c/=norm;rotation.d/=norm;
  if(fabs(rotation.a*rotation.c+rotation.b*rotation.d)>0.001||
     fabs(rotation.c*rotation.c+rotation.d*rotation.d-1)>0.001||
     fabs(rotation.a*rotation.d-rotation.b*rotation.c-1)>0.001)goto done;
  if(landscape?(fabs(rotation.a)>0.001||fabs(rotation.d)>0.001):
-              (fabs(rotation.b)>0.001||fabs(rotation.c)>0.001))goto done;
+              (fabs(rotation.b)>0.001||fabs(rotation.c)>0.001)){
+  fvGDecision(12,"ratio 0.1.4: waiting for native rotation");goto retry;
+ }
  /* Original arm64 helper 0x3df0c uses table 0x7fc68: 0, pi,
   * +pi/2, -pi/2 for interface orientations 1..4. Do not retain a stale
   * sign when rotating between two landscape or two portrait orientations. */
@@ -252,9 +268,17 @@ static void fvGApply(id h){
   fvGPut(state,"sceneFrame",fvGBoxRect(sf));
   objc_setAssociatedObject(h,&fvGStateKey,state,1);
  }
- if(!fvGSceneFrame(scene,settings,cached,targetScene))goto done;
+ if(fvGSceneFrame(scene,settings,cached,targetScene)){
+#ifdef FV_COMPLETE_MODE
+  fvFMMarkApplied(h);
+#endif
+ }else{
+  fvGDecision(13,"ratio 0.1.4: Scene frame not accepted; retry pending");goto retry;
+ }
  if(objc_getAssociatedObject(h,&fvGStateKey)!=state||ivar(h,"appScene")!=scene||
-    ivar(h,"appSetting")!=cached||ivar(h,"hostingView")!=r||SEND(h,"superview")!=p)goto done;
+    ivar(h,"appSetting")!=cached||ivar(h,"hostingView")!=r||SEND(h,"superview")!=p){
+  fvGDecision(14,"ratio 0.1.4: mount identity changed during layout");goto retry;
+ }
  if(!fvGGet(state,"presentationCaptured")){
   fvGPut(state,"parentBounds",fvGBoxRect(pb));
   fvGPut(state,"hostFrame",fvGBoxRect(hf));fvGPut(state,"remoteBounds",fvGBoxRect(rb));
@@ -268,6 +292,12 @@ static void fvGApply(id h){
  if(!fvGSameTransform(rt,targetTransform))fvGSetTransform(r,targetTransform);
  if(!fvGNear(rc.x,targetCenter.x)||!fvGNear(rc.y,targetCenter.y))fvGSetCenter(r,targetCenter);
  done:objc_setAssociatedObject(h,&fvGBusyKey,0,1);
+ return;
+ retry:
+ objc_setAssociatedObject(h,&fvGBusyKey,0,1);
+#ifdef FV_COMPLETE_MODE
+ fvFMScheduleRetry(h);
+#endif
 }
 /* One outstanding trailing update per host, at most 20 geometry passes/sec.
  * Retain until the main-queue callback; no recurring timer or global busy flag.
@@ -275,7 +305,13 @@ static void fvGApply(id h){
 static void fvGDrain(void *context){
  id work=context,h=fvGGet(work,"host"),token=fvGGet(work,"token");
  if(fvGWorkCurrent(work,&fvGPendingKey)&&!objc_getAssociatedObject(h,&fvGLeavingKey))fvGApply(h);
+ BOOL current=fvGWorkCurrent(work,&fvGPendingKey);
  if(objc_getAssociatedObject(h,&fvGPendingKey)==token)objc_setAssociatedObject(h,&fvGPendingKey,0,1);
+#ifdef FV_COMPLETE_MODE
+ if(!current&&!objc_getAssociatedObject(h,&fvGLeavingKey)&&!objc_getAssociatedObject(h,&fvGPendingKey)){
+  id item=SEND(h,"superview");if(fvGKind(item,fvGItemClass)&&SEND(item,"window"))fvFMRequestMount(h,ivar(h,"hostingView"));
+ }
+#endif
  id item=SEND(h,"superview");
  if(fvGKind(item,fvGItemClass)&&SEND(item,"window"))fvKAObserveItem(item);
  fvKARefresh();
