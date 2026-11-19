@@ -156,9 +156,9 @@ static void fvFMRequestMount(id host,id child){
 }
 #endif
 static void fvFMHostAddHook(id self,SEL cmd,id child){
-#if !defined(FV_COMPLETE_MODE)
+ /* The complete mode previously skipped this synchronous transaction, so a
+  * first-time app could mount its native-sized Scene before async layout. */
  fvFMPrepare(self,child);
-#endif
  if(fvFMHostAdd)((void(*)(id,SEL,id))fvFMHostAdd)(self,cmd,child);
 #if defined(FV_COMPLETE_MODE)
  fvFMRequestMount(self,child);
