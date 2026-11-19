@@ -9,6 +9,11 @@ prefix=r'''
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+/* Darwin stdio fortify defines a function-like macro; the production
+ * adapter declares the real symbol without stdio headers. Keep that ABI. */
+#ifdef snprintf
+#undef snprintf
+#endif
 #include "FVKeyboardNativeFlagCore.h"
 typedef void *id;typedef void *Class;typedef unsigned long U;
 static unsigned char object[320];
