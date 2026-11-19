@@ -126,7 +126,7 @@ static void fvFMRetryWork(void *context){
   .parent=fvGGet(work,"parent"),.window=fvGGet(work,"window"),.token=token};
  FVRAMount live={.host=host,.scene=ivar(host,"appScene"),.child=ivar(host,"hostingView"),
   .parent=SEND(host,"superview"),.window=SEND(host,"window"),.token=objc_getAssociatedObject(host,&fvFMMountTokenKey)};
- if(!saved.scene&&live.scene){fvGPut(work,"scene",live.scene);saved.scene=live.scene;}
+ if(!saved.scene&&live.scene){fvGPut(work,"scene",(id)live.scene);saved.scene=live.scene;}
  if(fvRAMountRetryCurrent(saved,live,enabled(),objc_getAssociatedObject(host,&fvGLeavingKey)!=0))fvGRequest(host);
  SEND(work,"release");
 }
@@ -150,7 +150,7 @@ static void fvFMMountRetry(void *context){
   .parent=fvGGet(work,"parent"),.window=fvGGet(work,"window"),.token=fvGGet(work,"token")};
  FVRAMount live={.host=host,.scene=ivar(host,"appScene"),.child=ivar(host,"hostingView"),
   .parent=SEND(host,"superview"),.window=SEND(host,"window"),.token=objc_getAssociatedObject(host,&fvFMMountTokenKey)};
- if(!saved.scene&&live.scene){fvGPut(work,"scene",live.scene);saved.scene=live.scene;}
+ if(!saved.scene&&live.scene){fvGPut(work,"scene",(id)live.scene);saved.scene=live.scene;}
  if(fvRAMountRetryCurrent(saved,live,enabled(),objc_getAssociatedObject(host,&fvGLeavingKey)!=0)&&
     SEND(child,"superview")==host&&SEND(child,"window")==live.window){
   if(!saved.scene&&live.scene)trace("ratio mount retry: Scene arrived after temporary nil");

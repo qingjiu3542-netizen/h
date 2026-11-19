@@ -1,6 +1,7 @@
 /* SpringBoard-only, opt-in observation of original keyboard presentation. */
 #ifdef FV_KEYBOARD_GEOMETRY_PROBE
 #include "FVKeyboardModeCore.h"
+#include "FVKeyboardDock.inc"
 extern int snprintf(char *,U,const char *,...);
 static IMP fvKGPOriginalFrame;
 static unsigned fvKGPBudget=24;
@@ -28,6 +29,7 @@ static double fvKGPClippedHeight(id layer,id window,id space,Rect surface,unsign
  return -1;
 }
 static void fvKGPReport(id work,const char *phase){
+ if(!fvGGet(work,"report"))return;
  id layer=fvGGet(work,"layer"),host=fvGGet(work,"host"),item=fvGGet(work,"item"),scene=fvGGet(work,"scene");
  id parent=SEND(layer,"superview"),window=SEND(item,"window"),layerWindow=SEND(layer,"window");
  id screen=SEND(window,"screen");
@@ -72,12 +74,17 @@ static void fvKGPReport(id work,const char *phase){
 static void fvKGPSample(void *context){
  id work=context,layer=fvGGet(work,"layer");
  fvKGPReport(work,"settled");
+ fvKDDock(work);
  objc_setAssociatedObject(layer,&fvKGPPending,0,0);
  SEND(work,"release");
 }
 static void fvKGPFrame(id layer,SEL cmd,Rect frame){
+ fvKDNativeFrame(layer);
  ((void(*)(id,SEL,Rect))fvKGPOriginalFrame)(layer,cmd,frame);
- if(!fvGMain()||!fvKGPBudget||objc_getAssociatedObject(layer,&fvKGPPending))return;
+ if(!fvGMain()||fvKDIsWriting()||objc_getAssociatedObject(layer,&fvKGPPending))return;
+#ifndef FV_KEYBOARD_DOCK_EXPERIMENT
+ if(!fvKGPBudget)return;
+#endif
  id host=layer;
  for(unsigned i=0;i<3&&host;i++)host=SEND(host,"superview");
  if(!fvGKind(host,fvGHostClass)||!enabled())return;
@@ -86,10 +93,17 @@ static void fvKGPFrame(id layer,SEL cmd,Rect frame){
  id work=SEND(objc_getClass("NSMutableDictionary"),"dictionary");
  if(!work)return;
  fvGPut(work,"layer",layer);fvGPut(work,"host",host);fvGPut(work,"item",item);fvGPut(work,"scene",scene);
+#ifdef FV_KEYBOARD_DOCK_EXPERIMENT
+ id mountToken=objc_getAssociatedObject(host,&fvFMMountTokenKey);
+ if(!mountToken)return;
+ fvGPut(work,"mountToken",mountToken);
+#endif
+ if(fvKGPBudget)fvGPut(work,"report",SEND(objc_getClass("NSNumber"),"numberWithInt:",1));
  objc_setAssociatedObject(layer,&fvKGPPending,work,0); /* cleared before retained task is released */
- fvKGPBudget--;
+ if(fvKGPBudget)fvKGPBudget--;
  fvKGPReport(work,"attached");
  dispatch_after_f(dispatch_time(0,80000000LL),&_dispatch_main_q,SEND(work,"retain"),fvKGPSample);
+ fvKDQueue(work);
 }
 static void fvKGPInstall(void){
  if(fvKGPInstalled)return;
@@ -112,5 +126,6 @@ static void fvKGPInstall(void){
  fvGHook(cls,"setFrame:",(IMP)fvKGPFrame,&fvKGPOriginalFrame);
  fvKGPInstalled=1;
  trace("KB geometry probe installed");
+ fvKDInstall();
 }
 #endif

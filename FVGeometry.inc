@@ -12,6 +12,9 @@ static void fvGRequest(id o);
 static void fvKARefresh(void);
 static void fvKAObserveItem(id item);
 static void fvKADetach(id item);
+#ifdef FV_KEYBOARD_DOCK_EXPERIMENT
+static void fvKDDropForHost(id host);
+#endif
 #ifdef FV_COMPLETE_MODE
 static void fvFMRequestMount(id host,id child);
 static void fvFMMarkApplied(id host);
@@ -209,6 +212,9 @@ static void fvGApply(id h){
  id p=SEND(h,"superview"),scene=ivar(h,"appScene"),r=ivar(h,"hostingView"),cached=ivar(h,"appSetting");
  id state=objc_getAssociatedObject(h,&fvGStateKey),settings=0;
  int active=enabled();
+#ifdef FV_KEYBOARD_DOCK_EXPERIMENT
+ if(!active)fvKDDropForHost(h);
+#endif
  /* A replacement Scene owns its own native baseline. Never send the old
   * snapshot to it, or keep retrying an identity check that cannot succeed. */
  if(state&&!scene)return; /* A temporarily empty ivar is not a new Scene. */
@@ -263,6 +269,9 @@ static void fvGApply(id h){
  int coverage=fvGWindowCoverage(p,pb);
  if(coverage<0){fvGDecision(7,"ratio 0.1.4: fullscreen coverage unavailable");goto retry;}
  if(coverage){
+#ifdef FV_KEYBOARD_DOCK_EXPERIMENT
+  fvKDDropForHost(h);
+#endif
   if(!state){
    objc_setAssociatedObject(h,&fvGFullscreenKey,SEND(objc_getClass("NSNumber"),"numberWithInt:",1),1);
    goto done;

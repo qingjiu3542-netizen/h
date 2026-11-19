@@ -12,6 +12,9 @@ static void fvGRestoreRetry(void *context){
 }
 static void fvGLeave(id h){
  if(!fvGMain()||!h)return;
+#ifdef FV_KEYBOARD_DOCK_EXPERIMENT
+ fvKDDropForHost(h);
+#endif
 #ifdef FV_COMPLETE_MODE
  objc_setAssociatedObject(h,&fvFMMountTokenKey,0,1);
  objc_setAssociatedObject(h,&fvFMMountWorkKey,0,1);

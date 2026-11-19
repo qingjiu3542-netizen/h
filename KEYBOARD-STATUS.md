@@ -1,6 +1,16 @@
-# Keyboard experiment: outer-item avoidance
+# Keyboard experiments: legacy avoidance and measured-region docking
 
-This is an opt-in source implementation, not a verified input-bar repair or an installable release.
+## New keyboard-dock-experiment target (not a verified repair)
+
+FV_KEYBOARD_DOCK_EXPERIMENT builds actual visual writes, separately from both the read-only geometry probe and the legacy whole-item translation below. FVKeyboardDockCore.h derives a uniform scale from host width and a measured, full-width, bottom-docked key rectangle. It never mistakes the full remote canvas height for the key height. Seventeen pure-C scenarios cover key-height changes, nonzero origins, inner/outer placement, invalid numbers and rejected floating keyboards.
+
+The runtime experiment requires screen-qualified CGRect keyboard notifications, matching source screen/canvas dimensions, a current mount token, active ratio snapshot, confirmed native inner flag or original outer-window container, portrait/nonrotated coordinates, and a layer distinct from the app remote. It writes only that layer's transform/center, preserving the native baseline. Native frame writes, hide, exit, fullscreen and ratio-off restore only still-owned properties. Deferred work is bounded and rejects changed mounts. There is no Swift-address hook, layer migration, global screen-size write, synthetic keyboard notification or scene mutation in this adapter.
+
+CRITICAL LIMITATIONS: Screen-qualified notifications do NOT authenticate the input app or keyboard scene. The original inner flag is only a hint. Delivery in SpringBoard and correspondence of the notification key rectangle to the observed remote surface are NOT device-proven. This code is a CI-only opt-in experiment until association, display and touch mapping are validated. It may conservatively skip all writes. Only portrait runtime geometry is enabled; sideways, split/floating and insufficient-room cases remain native. It does NOT resize app content, update app input insets, move the input bar, implement animation matching, or provide a completed keyboard fix. Outer-window targets may not be discoverable via the existing three-ancestor sampling hook. Do not package this target as a production repair.
+
+## Legacy keyboard-experiment target
+
+The remainder of this document describes FV_KEYBOARD_AVOIDANCE, an opt-in whole-item translation implementation, not a verified input-bar repair or an installable release.
 
 ## Preserved original boundaries
 
