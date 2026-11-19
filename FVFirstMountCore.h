@@ -17,6 +17,29 @@ static inline int fvRatioSceneSize(double width,double height,long orientation,
  *outHeight=landscape?edge:longEdge;
  return 1;
 }
+static int fvRatioPresentationMatches(double parentWidth,double parentHeight,
+ double hostWidth,double hostHeight,double remoteWidth,double remoteHeight,
+ double centerX,double centerY,double a,double b,double c,double d,
+ double targetSceneWidth,double targetSceneHeight,long orientation){
+ const double eps=0.5;
+ if(orientation<1||orientation>4||!__builtin_isfinite(parentWidth)||
+    !__builtin_isfinite(parentHeight)||!__builtin_isfinite(hostWidth)||
+    !__builtin_isfinite(hostHeight)||!__builtin_isfinite(remoteWidth)||
+    !__builtin_isfinite(remoteHeight)||!__builtin_isfinite(centerX)||
+    !__builtin_isfinite(centerY)||!__builtin_isfinite(a)||!__builtin_isfinite(b)||
+    !__builtin_isfinite(c)||!__builtin_isfinite(d)||!__builtin_isfinite(targetSceneWidth)||
+    !__builtin_isfinite(targetSceneHeight)||parentWidth<=0||targetSceneWidth<=0||targetSceneHeight<=0)return 0;
+ double height=parentWidth*16.0/9.0;
+ double scale=parentWidth/(orientation>=3?targetSceneHeight:targetSceneWidth);
+ double ea=orientation==1?scale:(orientation==2?-scale:0);
+ double eb=orientation==3?scale:(orientation==4?-scale:0);
+ double ec=-eb,ed=ea;
+ return __builtin_fabs(parentHeight-height)<=eps&&__builtin_fabs(hostWidth-parentWidth)<=eps&&
+  __builtin_fabs(hostHeight-height)<=eps&&__builtin_fabs(remoteWidth-targetSceneWidth)<=eps&&
+  __builtin_fabs(remoteHeight-targetSceneHeight)<=eps&&__builtin_fabs(centerX-parentWidth/2)<=eps&&
+  __builtin_fabs(centerY-height/2)<=eps&&__builtin_fabs(a-ea)<=0.001&&
+  __builtin_fabs(b-eb)<=0.001&&__builtin_fabs(c-ec)<=0.001&&__builtin_fabs(d-ed)<=0.001;
+}
 static int fvFirstMountCurrent(
  const void *scene,const void *liveScene,
  const void *cache,const void *liveCache,

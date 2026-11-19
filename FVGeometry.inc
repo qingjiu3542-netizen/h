@@ -88,6 +88,22 @@ static BOOL fvGSettings(id scene,id cached,id *settings){
  *settings=SEND(scene,"settings");
  return fvGHas(*settings,"frame")&&fvGHas(*settings,"interfaceOrientation")&&fvGHas(*settings,"mutableCopy");
 }
+#include "FVFirstMountCore.h"
+static Rect fvGTargetSceneFrame(Rect nativeFrame,long orientation);
+static BOOL fvGFirstPresentationMatches(id h,id scene,id cached,id r,id p,id state,long orientation){
+ if(!fvGMain()||!h||!scene||!cached||!r||!p||!state||
+    objc_getAssociatedObject(h,&fvGStateKey)!=state||ivar(h,"appScene")!=scene||
+    ivar(h,"appSetting")!=cached||ivar(h,"hostingView")!=r||SEND(h,"superview")!=p||
+    SEND(r,"superview")!=h||!fvGHas(scene,"settings"))return 0;
+ Rect sf=rect(SEND(scene,"settings"),"frame"),cache=rect(cached,"frame");
+ Rect native=fvGUnboxRect(state,"sceneFrame"),target=fvGTargetSceneFrame(native,orientation);
+ Rect pb=rect(p,"bounds"),hf=rect(h,"frame"),rb=rect(r,"bounds");
+ Transform t=trans(r);Point center=fvGCenter(r);
+ return fvGSameRect(sf,target)&&fvGSameRect(cache,target)&&
+  fvRatioPresentationMatches(pb.size.width,pb.size.height,hf.size.width,hf.size.height,
+   rb.size.width,rb.size.height,center.x,center.y,t.a,t.b,t.c,t.d,
+   target.size.width,target.size.height,orientation);
+}
 static BOOL fvGSceneFrame(id scene,id settings,id cached,Rect frame){
  BOOL changed=!fvGSameRect(rect(settings,"frame"),frame);
  id copy=changed?SEND(settings,"mutableCopy"):0;
@@ -291,6 +307,12 @@ static void fvGApply(id h){
  if(!fvGSameRect(rb,targetRemote))setrect(r,"setBounds:",targetRemote);
  if(!fvGSameTransform(rt,targetTransform))fvGSetTransform(r,targetTransform);
  if(!fvGNear(rc.x,targetCenter.x)||!fvGNear(rc.y,targetCenter.y))fvGSetCenter(r,targetCenter);
+#ifdef FV_COMPLETE_MODE
+ if(!fvGFirstPresentationMatches(h,scene,cached,r,p,state,orientation)){
+  fvGDecision(15,"ratio: host/remote presentation readback mismatch; bounded retry pending");goto retry;
+ }
+ fvGDecision(16,"ratio: first presentation geometry verified");
+#endif
  done:objc_setAssociatedObject(h,&fvGBusyKey,0,1);
  return;
  retry:

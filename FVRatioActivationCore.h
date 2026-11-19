@@ -21,6 +21,11 @@ static inline int fvRAMountCurrent(FVRAMount saved,FVRAMount live,int enabled,in
   saved.host==live.host&&saved.scene==live.scene&&saved.child==live.child&&
   saved.parent==live.parent&&saved.window==live.window&&saved.token==live.token;
 }
+static inline int fvRAMountRetryCurrent(FVRAMount saved,FVRAMount live,int enabled,int leaving){
+ return enabled&&!leaving&&saved.host&&saved.child&&saved.parent&&saved.window&&saved.token&&
+  saved.host==live.host&&saved.child==live.child&&saved.parent==live.parent&&
+  saved.window==live.window&&saved.token==live.token&&(!saved.scene||saved.scene==live.scene);
+}
 static inline int fvKAShouldAdapt(FVKAOriginalMode mode,int ratioEnabled,int sourceMatches,int targetCount){
  return ratioEnabled&&sourceMatches&&targetCount==1&&
   (mode==FVKAOriginalModeInner||mode==FVKAOriginalModeOuter);

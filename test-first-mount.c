@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include "FVFirstMountCore.h"
+#include "FVRatioActivationCore.h"
 int main(void){
  int objects[12]={0};const void *p[10];
  for(int i=0;i<5;i++)p[2*i]=p[2*i+1]=&objects[i];
@@ -30,6 +31,23 @@ int main(void){
  assert(!fvRatioSceneSize(430,932,4,&w,&h));
  assert(!fvRatioSceneSize(0,932,1,&w,&h));
  assert(!fvRatioSceneSize(430,932,0,&w,&h));
- puts("PASS shared Scene dimensions and first-mount identity");
+ for(long o=1;o<=4;o++){
+  double sw=430,sh=764.444444444,hostW=319.5,hostH=hostW*16.0/9.0;
+  double scale=hostW/(o>=3?sh:sw),ra,rb,rc,rd;
+  ra=o==1?scale:(o==2?-scale:0);rb=o==3?scale:(o==4?-scale:0);rc=-rb;rd=ra;
+  assert(fvRatioPresentationMatches(hostW,hostH,hostW,hostH,sw,sh,
+   hostW/2,hostH/2,ra,rb,rc,rd,sw,sh,o));
+  assert(!fvRatioPresentationMatches(hostW,hostH,hostW,hostH,sw,932,
+   hostW/2,hostH/2,ra,rb,rc,rd,sw,sh,o));
+ }
+ int objects2[8]={0};FVRAMount saved={&objects2[0],0,&objects2[1],&objects2[2],&objects2[3],&objects2[4]};
+ FVRAMount live={&objects2[0],0,&objects2[1],&objects2[2],&objects2[3],&objects2[4]};
+ assert(fvRAMountRetryCurrent(saved,live,1,0));
+ live.scene=&objects2[5];assert(fvRAMountRetryCurrent(saved,live,1,0)); /* first scene arrival */
+ saved.scene=&objects2[5];assert(fvRAMountRetryCurrent(saved,live,1,0));
+ live.scene=0;assert(!fvRAMountRetryCurrent(saved,live,1,0));
+ live.scene=&objects2[7];assert(!fvRAMountRetryCurrent(saved,live,1,0));
+ live.scene=&objects2[5];live.token=&objects2[6];assert(!fvRAMountRetryCurrent(saved,live,1,0));
+ puts("PASS shared Scene dimensions, first-mount identity and nil-scene retry");
  assert(count==112);return 0;
 }
