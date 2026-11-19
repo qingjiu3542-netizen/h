@@ -23,6 +23,10 @@ int main(void){
  assert(fvKAOriginalMode("outer")==FVKAOriginalModeOuter);
  assert(fvKAOriginalMode("native")==FVKAOriginalModeUnknown);
  assert(fvKAOriginalMode(0)==FVKAOriginalModeUnknown);
+ assert(fvRANextRetry(0,6)==1);
+ assert(fvRANextRetry(5,6)==6);
+ assert(fvRANextRetry(6,6)==-1);
+ assert(fvRANextRetry(-1,6)==-1);
  assert(fvKAShouldAdapt(FVKAOriginalModeInner,1,1,1));
  assert(fvKAShouldAdapt(FVKAOriginalModeOuter,1,1,1));
  assert(!fvKAShouldAdapt(FVKAOriginalModeUnknown,1,1,1));

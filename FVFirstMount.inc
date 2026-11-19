@@ -121,8 +121,8 @@ static void fvFMScheduleRetry(id host){
  id token=objc_getAssociatedObject(host,&fvFMMountTokenKey),child=ivar(host,"hostingView"),scene=ivar(host,"appScene");
  id parent=SEND(host,"superview"),window=SEND(host,"window");if(!token||!child||!scene||!parent||!window)return;
  id old=objc_getAssociatedObject(host,&fvFMMountRetryCountKey);long n=old?(long)SEND(old,"longValue"):0;
- if(n>=6)return;
- id next=SEND(objc_getClass("NSNumber"),"numberWithLong:",(U)(n+1));objc_setAssociatedObject(host,&fvFMMountRetryCountKey,next,1);
+ int nextRetry=fvRANextRetry((int)n,6);if(nextRetry<0)return;
+ id next=SEND(objc_getClass("NSNumber"),"numberWithLong:",(U)nextRetry);objc_setAssociatedObject(host,&fvFMMountRetryCountKey,next,1);
  id work=SEND(objc_getClass("NSMutableDictionary"),"dictionary");
  fvGPut(work,"host",host);fvGPut(work,"child",child);fvGPut(work,"scene",scene);fvGPut(work,"parent",parent);fvGPut(work,"window",window);fvGPut(work,"token",token);
  SEND(work,"retain");dispatch_after_f(dispatch_time(0,100000000LL),&_dispatch_main_q,work,fvFMRetryWork);

@@ -25,6 +25,10 @@ static inline int fvKAShouldAdapt(FVKAOriginalMode mode,int ratioEnabled,int sou
  return ratioEnabled&&sourceMatches&&targetCount==1&&
   (mode==FVKAOriginalModeInner||mode==FVKAOriginalModeOuter);
 }
+/* Returns next retry number, or -1 once the bounded budget is exhausted. */
+static inline int fvRANextRetry(int current,int limit){
+ return current<0||limit<0||current>=limit?-1:current+1;
+}
 static inline int fvRAShouldApply(int enabled,int liveGeometry,int parentSimilarity,int hostIdentity,int fullscreen){
  return enabled&&liveGeometry&&parentSimilarity&&hostIdentity&&!fullscreen;
 }
