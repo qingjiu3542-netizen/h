@@ -162,6 +162,48 @@ static void fvGDecision(unsigned code,const char *message){
 #ifdef FV_COMPLETE_MODE
 static void fvFMScheduleRetry(id host);
 #endif
+#include "FVPresentationCommitCore.h"
+typedef struct {
+ id host,scene,cached,remote,parent,state;
+ long orientation;
+ Rect parentBounds,hostFrame,remoteBounds;
+ Transform remoteTransform;
+ Point remoteCenter;
+} FVPresentationContext;
+static int fvGPCurrent(void *v){
+ FVPresentationContext *c=v;
+ if(!enabled()||objc_getAssociatedObject(c->host,&fvGLeavingKey)||
+    objc_getAssociatedObject(c->host,&fvGStateKey)!=c->state||
+    ivar(c->host,"appScene")!=c->scene||ivar(c->host,"appSetting")!=c->cached||
+    ivar(c->host,"hostingView")!=c->remote||SEND(c->host,"superview")!=c->parent||
+    SEND(c->remote,"superview")!=c->host||!fvGViews(c->host,c->parent,c->remote))return 0;
+ id window=SEND(c->host,"window");
+ if(!window||SEND(c->remote,"window")!=window)return 0;
+ id settings=SEND(c->scene,"settings");
+ return fvGHas(settings,"interfaceOrientation")&&
+  ((long(*)(id,SEL))objc_msgSend)(settings,S("interfaceOrientation"))==c->orientation;
+}
+static int fvGPMatches(void *v,unsigned field){
+ FVPresentationContext *c=v;
+ switch(field){
+ case 0:return fvGSameRect(rect(c->parent,"bounds"),c->parentBounds);
+ case 1:return fvGSameRect(rect(c->host,"frame"),c->hostFrame);
+ case 2:return fvGSameRect(rect(c->remote,"bounds"),c->remoteBounds);
+ case 3:return fvGSameTransform(trans(c->remote),c->remoteTransform);
+ case 4:{Point p=fvGCenter(c->remote);return fvGNear(p.x,c->remoteCenter.x)&&fvGNear(p.y,c->remoteCenter.y);}
+ default:return 0;
+ }
+}
+static void fvGPAssign(void *v,unsigned field){
+ FVPresentationContext *c=v;
+ switch(field){
+ case 0:setrect(c->parent,"setBounds:",c->parentBounds);break;
+ case 1:setrect(c->host,"setFrame:",c->hostFrame);break;
+ case 2:setrect(c->remote,"setBounds:",c->remoteBounds);break;
+ case 3:fvGSetTransform(c->remote,c->remoteTransform);break;
+ case 4:fvGSetCenter(c->remote,c->remoteCenter);break;
+ }
+}
 static void fvGApply(id h){
  if(!fvGMain()||objc_getAssociatedObject(h,&fvGBusyKey))return;
  id p=SEND(h,"superview"),scene=ivar(h,"appScene"),r=ivar(h,"hostingView"),cached=ivar(h,"appSetting");
@@ -184,6 +226,9 @@ static void fvGApply(id h){
  }
  if(!active){fvGDecision(0,"ratio 0.1.2: preference off in SpringBoard");return;}
  if(!fvGViews(h,p,r)){fvGDecision(1,"ratio 0.1.2: waiting for item/host/remote");return;}
+ if(SEND(r,"superview")!=h||!SEND(h,"window")||SEND(r,"window")!=SEND(h,"window")){
+  fvGDecision(18,"ratio: waiting for exact remote attachment and window");return;
+ }
  if(!fvGSettings(scene,cached,&settings)){fvGDecision(2,"ratio 0.1.2: scene settings unavailable");return;}
  Rect pb=rect(p,"bounds"),hf=rect(h,"frame"),rb=rect(r,"bounds"),sf=rect(settings,"frame");
  Transform ht=trans(h),rt=trans(r);Transform pt=trans(p);Point rc=fvGCenter(r);
@@ -284,7 +329,7 @@ static void fvGApply(id h){
   fvGPut(state,"sceneFrame",fvGBoxRect(sf));
   objc_setAssociatedObject(h,&fvGStateKey,state,1);
  }
- if(fvGSceneFrame(scene,settings,cached,targetScene)){ }else{
+ if(!fvGSceneFrame(scene,settings,cached,targetScene)){
   fvGDecision(13,"ratio 0.1.4: Scene frame not accepted; retry pending");goto retry;
  }
  if(objc_getAssociatedObject(h,&fvGStateKey)!=state||ivar(h,"appScene")!=scene||
@@ -297,16 +342,20 @@ static void fvGApply(id h){
   fvGPut(state,"remoteTransform",fvGBoxTransform(rt));fvGPut(state,"remoteCenter",fvGBoxPoint(rc));
   fvGPut(state,"presentationCaptured",SEND(objc_getClass("NSNumber"),"numberWithInt:",1));
  }
- /* Parent transform and center are never assigned, even on restoration. */
- if(!fvGSameRect(pb,targetParent))setrect(p,"setBounds:",targetParent);
- if(!fvGSameRect(hf,targetHost))setrect(h,"setFrame:",targetHost);
- if(!fvGSameRect(rb,targetRemote))setrect(r,"setBounds:",targetRemote);
- if(!fvGSameTransform(rt,targetTransform))fvGSetTransform(r,targetTransform);
- if(!fvGNear(rc.x,targetCenter.x)||!fvGNear(rc.y,targetCenter.y))fvGSetCenter(r,targetCenter);
+ /* Re-read after each preceding setter: native layout may have reset remote
+  * bounds/transform since the original samples. Never use those stale samples
+  * to skip a write. Keep live objects retained through reentrant callbacks. */
+ FVPresentationContext presentation={h,scene,cached,r,p,state,orientation,
+  targetParent,targetHost,targetRemote,targetTransform,targetCenter};
+ SEND(h,"retain");SEND(scene,"retain");SEND(cached,"retain");SEND(r,"retain");SEND(p,"retain");SEND(state,"retain");
+ FVPresentationOps ops={&presentation,fvGPCurrent,fvGPMatches,fvGPAssign};
+ int committed=fvPresentationCommit(&ops);
 #ifdef FV_COMPLETE_MODE
- if(!fvGFirstPresentationMatches(h,scene,cached,r,p,state,orientation)){
-  fvGDecision(15,"ratio: host/remote presentation readback mismatch; bounded retry pending");goto retry;
- }
+ if(committed)committed=fvGFirstPresentationMatches(h,scene,cached,r,p,state,orientation);
+#endif
+ SEND(state,"release");SEND(p,"release");SEND(r,"release");SEND(cached,"release");SEND(scene,"release");SEND(h,"release");
+ if(!committed){fvGDecision(17,"ratio: live presentation commit interrupted or unaccepted");goto retry;}
+#ifdef FV_COMPLETE_MODE
  fvGDecision(16,"ratio: first presentation geometry verified");
  fvFMMarkApplied(h);
 #endif

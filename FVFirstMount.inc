@@ -94,8 +94,7 @@ static BOOL fvFMPrepare(id host,id child){
   trace("first mount: identity changed during readback; cache unchanged");goto cleanup;
  }
  if(fvGHas(cached,"setFrame:"))setrect(cached,"setFrame:",target);
- trace("first mount: scene settings accepted; applying host/remote geometry before addSubview");
- fvGApply(host);
+ trace("first mount diagnostic: scene settings accepted; client rendering unverified");
  result=1;
  cleanup:
  SEND(parent,"release");SEND(remote,"release");SEND(cached,"release");
@@ -107,6 +106,15 @@ static BOOL fvFMPrepare(id host,id child){
 /* A new mount replaces the token, including detach/re-attach of the same
  * objects. Saved window and parent identities prevent writes across sessions. */
 static char fvFMMountTokenKey, fvFMMountRetryCountKey, fvFMMountWorkKey;
+/* Persistent host-associated metadata must not retain host or its owning
+ * parent. Timer work retains live objects only until its bounded callback. */
+static void fvFMRememberMount(id host,id child,id scene,id parent,id window){
+ id metadata=SEND(objc_getClass("NSMutableDictionary"),"dictionary");
+ fvGIdentity(metadata,"child",child);fvGIdentity(metadata,"scene",scene);
+ fvGIdentity(metadata,"parent",parent);fvGIdentity(metadata,"window",window);
+ fvGIdentity(metadata,"token",objc_getAssociatedObject(host,&fvFMMountTokenKey));
+ objc_setAssociatedObject(host,&fvFMMountWorkKey,metadata,1);
+}
 static id fvFMSceneFromWork(id work){
  id value=fvGGet(work,"scene");
  return value==SEND(objc_getClass("NSNull"),"null")?0:value;
@@ -155,15 +163,15 @@ static void fvFMRequestMount(id host,id child){
  id parent=SEND(host,"superview"),window=SEND(host,"window");if(!parent||!window)return;
  id scene=ivar(host,"appScene"),oldWork=objc_getAssociatedObject(host,&fvFMMountWorkKey);
  id oldToken=objc_getAssociatedObject(host,&fvFMMountTokenKey);
- if(oldWork&&oldToken&&fvGGet(oldWork,"child")==child&&fvGGet(oldWork,"parent")==parent&&fvGGet(oldWork,"window")==window){
-  id savedScene=fvFMSceneFromWork(oldWork);
+ if(oldWork&&oldToken&&fvGIdentical(oldWork,"token",oldToken)&&fvGIdentical(oldWork,"child",child)&&fvGIdentical(oldWork,"parent",parent)&&fvGIdentical(oldWork,"window",window)){
+  id savedScene=SEND(fvGGet(oldWork,"scene"),"pointerValue");
   if((!savedScene&&!scene)||savedScene==scene)return;
   if(!savedScene&&scene){
    id newToken=SEND(objc_getClass("NSObject"),"new");objc_setAssociatedObject(host,&fvFMMountTokenKey,newToken,1);
    id work=SEND(objc_getClass("NSMutableDictionary"),"dictionary");
    fvGPut(work,"host",host);fvGPut(work,"child",child);fvGPut(work,"scene",scene);
    fvGPut(work,"parent",parent);fvGPut(work,"window",window);fvGPut(work,"token",newToken);
-   SEND(newToken,"release");objc_setAssociatedObject(host,&fvFMMountWorkKey,work,1);
+   SEND(newToken,"release");fvFMRememberMount(host,child,scene,parent,window);
    fvGRequest(host);const long long delays[]={40000000LL,120000000LL,260000000LL,500000000LL,900000000LL,1400000000LL};
    for(unsigned i=0;i<6;i++)dispatch_after_f(dispatch_time(0,delays[i]),&_dispatch_main_q,SEND(work,"retain"),fvFMMountRetry);
    trace("ratio mount retry: Scene arrived after temporary nil");return;
@@ -174,16 +182,18 @@ static void fvFMRequestMount(id host,id child){
  fvGPut(work,"host",host);fvGPut(work,"child",child);
  fvGPut(work,"scene",scene?scene:SEND(objc_getClass("NSNull"),"null"));
  fvGPut(work,"parent",parent);fvGPut(work,"window",window);fvGPut(work,"token",token);
- SEND(token,"release");objc_setAssociatedObject(host,&fvFMMountWorkKey,work,1);
+ SEND(token,"release");fvFMRememberMount(host,child,scene,parent,window);
  fvGRequest(host);const long long delays[]={40000000LL,120000000LL,260000000LL,500000000LL,900000000LL,1400000000LL};
  for(unsigned i=0;i<6;i++)dispatch_after_f(dispatch_time(0,delays[i]),&_dispatch_main_q,SEND(work,"retain"),fvFMMountRetry);
  trace("ratio mount: bounded scene and geometry retries armed");
 }
 #endif
 static void fvFMHostAddHook(id self,SEL cmd,id child){
- /* The complete mode previously skipped this synchronous transaction, so a
-  * first-time app could mount its native-sized Scene before async layout. */
+#if !defined(FV_COMPLETE_MODE)
  fvFMPrepare(self,child);
+#endif
+ /* Complete mode uses one coherent transaction only after attachment. A
+  * scene-only prewrite can expose an old client surface at a new viewport. */
  if(fvFMHostAdd)((void(*)(id,SEL,id))fvFMHostAdd)(self,cmd,child);
 #if defined(FV_COMPLETE_MODE)
  /* Commit the app host and remote presentation synchronously after the exact

@@ -47,10 +47,25 @@ static void fvKGPReport(id work,const char *phase){
    double visibleHeight=fvKGPClippedHeight(layer,layerWindow,space,surface,&clips);
    char line[320];
    snprintf(line,sizeof line,"KB geometry phase=%s owner=%s item=%.1f,%.1f,%.1f,%.1f scene=%.1fx%.1f layer=%.1f,%.1f,%.1f,%.1f parent=%.1f,%.1f,%.1f,%.1f clipCount=%u visibleHeight=%.1f",
-    phase,owner?"outer":"unconfirmed",itemRect.origin.x,itemRect.origin.y,itemRect.size.width,itemRect.size.height,
+    phase,owner?"FVKeyboardWindow":"unconfirmed",itemRect.origin.x,itemRect.origin.y,itemRect.size.width,itemRect.size.height,
     logical.size.width,logical.size.height,surface.origin.x,surface.origin.y,surface.size.width,surface.size.height,
     clip.origin.x,clip.origin.y,clip.size.width,clip.size.height,clips,visibleHeight);
    trace(line);
+   extern const char *class_getName(Class);
+   id remote=ivar(host,"hostingView");
+   if(remote&&SEND(remote,"window")==window&&fvGHas(remote,"convertRect:toView:")){
+    Rect app=fvKGPInScreen(remote,window,space),bounds=rect(remote,"bounds");
+    snprintf(line,sizeof line,"KB appRemote phase=%s bounds=%.1fx%.1f displayed=%.1f,%.1f,%.1f,%.1f layerIsAppRemote=%d",
+     phase,bounds.size.width,bounds.size.height,app.origin.x,app.origin.y,app.size.width,app.size.height,layer==remote);
+    trace(line);
+   }
+   id ancestor=layer;
+   for(unsigned depth=0;ancestor&&depth<6;depth++,ancestor=SEND(ancestor,"superview")){
+    const char *name=class_getName(object_getClass(ancestor));
+    snprintf(line,sizeof line,"KB ancestry phase=%s depth=%u class=%s clips=%d layerWindow=%d appWindow=%d",
+     phase,depth,name?name:"unknown",(int)((BOOL(*)(id,SEL))objc_msgSend)(ancestor,S("clipsToBounds")),ancestor==layerWindow,ancestor==window);
+    trace(line);
+   }
   }
  }
 }

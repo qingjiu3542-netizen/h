@@ -11,7 +11,13 @@ static void fvGRestoreRetry(void *context){
  SEND(work,"release");
 }
 static void fvGLeave(id h){
- if(!fvGMain()||!h||!objc_getAssociatedObject(h,&fvGStateKey)||objc_getAssociatedObject(h,&fvGLeavingKey))return;
+ if(!fvGMain()||!h)return;
+#ifdef FV_COMPLETE_MODE
+ objc_setAssociatedObject(h,&fvFMMountTokenKey,0,1);
+ objc_setAssociatedObject(h,&fvFMMountWorkKey,0,1);
+ objc_setAssociatedObject(h,&fvFMMountRetryCountKey,0,1);
+#endif
+ if(!objc_getAssociatedObject(h,&fvGStateKey)||objc_getAssociatedObject(h,&fvGLeavingKey))return;
  id token=SEND(objc_getClass("NSObject"),"new");
  objc_setAssociatedObject(h,&fvGLeavingKey,token,1);
  objc_setAssociatedObject(h,&fvGPendingKey,0,1);
