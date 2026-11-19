@@ -75,14 +75,39 @@ static FVKAOriginalMode fvKDMode(long orientation){
  SEND(prefs,"release");return mode;
 }
 static void fvKDReport(const char *message){if(fvKDBudget){fvKDBudget--;trace(message);}}
+#include "FVKeyboardNativeFlagCore.h"
 static int fvKDFlag(id item,const char *name){
  extern const char *ivar_getTypeEncoding(void *);
  extern long ivar_getOffset(void *);
  extern U class_getInstanceSize(Class);
- void *v=class_getInstanceVariable(object_getClass(item),name);if(!v)return -1;
- const char *enc=ivar_getTypeEncoding(v);long offset=ivar_getOffset(v);
- if(!enc||(__builtin_strcmp(enc,"B")&&__builtin_strcmp(enc,"c"))||offset<0||(U)offset>=class_getInstanceSize(object_getClass(item)))return -1;
- unsigned char value=*((unsigned char*)item+offset);return value<=1?value:-1;
+ extern Class class_getSuperclass(Class);
+ extern int snprintf(char *,U,const char *,...);
+ const char *names[]={"isSideCard","innerKeyboardIsDisplay","recordOnlyInnerKeyboardIsShow"};
+ Class cls=item?object_getClass(item):0;
+ FVKBNativeLayout layout={0};unsigned requested=3;
+ layout.exactClass=cls&&cls==fvGItemClass;
+ layout.allPresent=1;
+ if(!layout.exactClass)return -1;
+ layout.instanceSize=class_getInstanceSize(cls);
+ Class superclass=class_getSuperclass(cls);if(superclass)layout.superSize=class_getInstanceSize(superclass);
+ long offsets[3]={-1,-1,-1};
+ for(unsigned i=0;i<3;i++){
+  void *v=class_getInstanceVariable(cls,names[i]);
+  if(!__builtin_strcmp(name,names[i]))requested=i;
+  if(!v){layout.allPresent=0;continue;}
+  offsets[i]=ivar_getOffset(v);layout.encoding[i]=ivar_getTypeEncoding(v);
+ }
+ layout.side=offsets[0];layout.inner=offsets[1];layout.record=offsets[2];
+ int value=fvKBReadNativeFlag((const unsigned char*)item,layout,requested);
+ static unsigned reportBudget=12;
+ if(reportBudget){
+  reportBudget--;char message[320];
+  snprintf(message,sizeof message,"KB nativeFlag name=%s status=%s value=%d layoutValid=%d offsets=%ld/%ld/%ld super=%lu size=%lu encoding=%.20s",
+   name,value<0?"rejected":"read",value,fvKBLayoutValid(layout),layout.side,layout.inner,layout.record,
+   layout.superSize,layout.instanceSize,requested<3&&layout.encoding[requested]?layout.encoding[requested]:"<null>");
+  trace(message);
+ }
+ return value;
 }
 static int fvKDCurrent(id work,id parent,id window){
  id layer=fvGGet(work,"layer"),host=fvGGet(work,"host"),item=fvGGet(work,"item");
@@ -115,8 +140,10 @@ static void fvKDDock(id work){
    fvKDReport("KB dock skipped: outer keyboard not in original owned container");return;
   }
  }else{
-  if(fvKDFlag(item,"isSideCard")!=0||fvKDFlag(item,"innerKeyboardIsDisplay")!=1){
-   fvKDReport("KB dock skipped: native inner keyboard state not confirmed");return;
+  int sideCard=fvKDFlag(item,"isSideCard"),innerDisplayed=fvKDFlag(item,"innerKeyboardIsDisplay");
+  int recorded=fvKDFlag(item,"recordOnlyInnerKeyboardIsShow");
+  if(!fvKBPortraitInnerEligible(sideCard,innerDisplayed,recorded,orientation)){
+   fvKDReport("KB dock skipped: original matched-app keyboard record not confirmed");return;
   }
   id ancestor=parent;unsigned depth=0;
   while(ancestor&&ancestor!=host&&depth++<12)ancestor=SEND(ancestor,"superview");
@@ -147,9 +174,12 @@ static void fvKDDock(id work){
  FVRect source={nativeBounds.origin.x,nativeBounds.origin.y,nativeBounds.size.width,nativeBounds.size.height};
  FVRect keys={nativeBounds.origin.x+fvKDKeys.origin.x-screenBounds.origin.x,
   nativeBounds.origin.y+fvKDKeys.origin.y-screenBounds.origin.y,fvKDKeys.size.width,fvKDKeys.size.height};
+ /* Six window-coordinate points of inner-bottom clearance. Convert using
+  * the measured parent basis instead of assuming the parent is unscaled. */
+ double bottomGap=mode==FVKAOriginalModeInner?6.0/(py.y-p0.y):0;
  FVKeyboardDockPlan plan;
- if(!fvKeyboardDockPlan(source,keys,(FVRect){target.origin.x,target.origin.y,target.size.width,target.size.height},
-    target.size.width/logical.size.width,mode==FVKAOriginalModeInner,&plan)){
+ if(!fvKeyboardDockPlanWithGap(source,keys,(FVRect){target.origin.x,target.origin.y,target.size.width,target.size.height},
+    target.size.width/logical.size.width,mode==FVKAOriginalModeInner,bottomGap,&plan)){
   fvKDReport("KB dock skipped: source keys not docked/full-width or insufficient space");return;
  }
  Rect proposedKeys={{plan.keys.x,plan.keys.y},{plan.keys.width,plan.keys.height}};

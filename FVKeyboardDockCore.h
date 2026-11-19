@@ -8,12 +8,12 @@ typedef struct {
  FVRect surface,keys;
  double scale,reservedLogicalHeight;
 } FVKeyboardDockPlan;
-static inline int fvKeyboardDockPlan(FVRect sourceSurface,FVRect sourceKeys,
- FVRect host,double appScale,int inner,FVKeyboardDockPlan *out){
+static inline int fvKeyboardDockPlanWithGap(FVRect sourceSurface,FVRect sourceKeys,
+ FVRect host,double appScale,int inner,double bottomGap,FVKeyboardDockPlan *out){
  if(!out)return 0;
  *out=(FVKeyboardDockPlan){0};
  if(!fvKAValidRect(sourceSurface)||!fvKAValidRect(sourceKeys)||!fvKAValidRect(host)||
-    !fvKAFinite(appScale)||appScale<=0)return 0;
+    !fvKAFinite(appScale)||appScale<=0||!fvKAFinite(bottomGap)||bottomGap<0)return 0;
  const double eps=0.5;
  /* Require a docked, full-width key region. Floating/split keyboards must
   * keep their native path until their separate geometry is implemented. */
@@ -23,14 +23,19 @@ static inline int fvKeyboardDockPlan(FVRect sourceSurface,FVRect sourceKeys,
     __builtin_fabs(sourceKeys.y+sourceKeys.height-sourceSurface.y-sourceSurface.height)>eps)return 0;
  double scale=host.width/sourceSurface.width,height=sourceKeys.height*scale;
  if(!fvKAFinite(scale)||scale<=0||!fvKAFinite(height)||height<=0||
-    (inner&&height>=host.height-1))return 0;
- double keyTop=inner?host.y+host.height-height:host.y+host.height;
+    (inner&&height+bottomGap>=host.height-1))return 0;
+ double keyTop=inner?host.y+host.height-bottomGap-height:host.y+host.height;
  FVRect surface={host.x,keyTop-(sourceKeys.y-sourceSurface.y)*scale,
   host.width,sourceSurface.height*scale};
  FVRect keys={host.x,keyTop,host.width,height};
  if(!fvKAValidRect(surface)||!fvKAValidRect(keys))return 0;
- double reserve=inner?height/appScale:0;
+ double reserve=inner?(height+bottomGap)/appScale:0;
  if(!fvKAFinite(reserve))return 0;
  *out=(FVKeyboardDockPlan){surface,keys,scale,reserve};return 1;
+}
+/* Backward-compatible zero-gap planner for the original core tests. */
+static inline int fvKeyboardDockPlan(FVRect sourceSurface,FVRect sourceKeys,
+ FVRect host,double appScale,int inner,FVKeyboardDockPlan *out){
+ return fvKeyboardDockPlanWithGap(sourceSurface,sourceKeys,host,appScale,inner,0,out);
 }
 #endif

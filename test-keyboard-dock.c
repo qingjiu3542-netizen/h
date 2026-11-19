@@ -36,5 +36,13 @@ int main(void){
  FVRect offset={100,50,430,932},offsetKeys={100,650,430,332};
  assert(fvKeyboardDockPlan(offset,offsetKeys,host,319.5/430,1,&p));
  assert(near(p.keys.y+p.keys.height,host.y+host.height));cases++;
- printf("PASS keyboard dock: %d source-key-region, uniform-scale and bottom-alignment scenarios\n",cases);
+ assert(fvKeyboardDockPlanWithGap(source,keys,host,319.5/430,1,6,&p));
+ assert(near(p.keys.y+p.keys.height,host.y+host.height-6));
+ assert(near(p.reservedLogicalHeight,332+6/(319.5/430)));cases++;
+ assert(!fvKeyboardDockPlanWithGap(source,keys,host,.7,1,-1,&p));cases++;
+ assert(!fvKeyboardDockPlanWithGap(source,keys,host,.7,1,NAN,&p));cases++;
+ assert(!fvKeyboardDockPlanWithGap(source,keys,host,.7,1,host.height,&p));cases++;
+ assert(fvKeyboardDockPlanWithGap(source,keys,host,.7,0,6,&p));
+ assert(near(p.keys.y,host.y+host.height)&&p.reservedLogicalHeight==0);cases++;
+ printf("PASS keyboard dock: %d source-key-region, uniform-scale and bottom-clearance scenarios\n",cases);
 }
