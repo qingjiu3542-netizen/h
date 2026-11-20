@@ -44,9 +44,9 @@ static void appLog(const char*s){
  int fd=open(p,0x209,0600);if(fd>=0){
   id bundle=M0(M0(objc_getClass("NSBundle"),"mainBundle"),"bundleIdentifier");
   const char *bid=bundle?((const char*(*)(id,SEL))objc_msgSend)(bundle,S("UTF8String")):"unknown";
-  char prefix[320];int length=snprintf(prefix,sizeof prefix,"[v=0.1.17 pid=%d stamp=%.3f bundle=%.200s] ",getpid(),CFAbsoluteTimeGetCurrent(),bid?bid:"unknown");
-  if(length>0&&(U)length<sizeof prefix)write(fd,prefix,(U)length);
-  write(fd,s,strlen(s));write(fd,"\n",1);close(fd);
+  char line[1024];int length=snprintf(line,sizeof line,"[v=0.1.17 pid=%d stamp=%.3f bundle=%.200s] %.600s\n",getpid(),CFAbsoluteTimeGetCurrent(),bid?bid:"unknown",s);
+  if(length>0&&(U)length<sizeof line)write(fd,line,(U)length);
+  close(fd);
  }
 }
 static void report(const char*s){if(reportBudget){reportBudget--;appLog(s);NSLog(text("[FVKeyboardApp] %s"),s);}}
