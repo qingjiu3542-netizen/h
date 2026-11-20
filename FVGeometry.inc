@@ -14,6 +14,8 @@ static void fvKAObserveItem(id item);
 static void fvKADetach(id item);
 #ifdef FV_KEYBOARD_APP_AVOIDANCE_BRIDGE
 static void fvKDPublishHost(id host);
+static void fvKDRecordMeasuredKeys(id host,Rect keys,Rect target,U version,double stamp);
+static int fvKDMeasurementCurrent(id host,U version);
 static void fvKDClearHostTicket(id host);
 #endif
 #ifdef FV_KEYBOARD_DOCK_EXPERIMENT

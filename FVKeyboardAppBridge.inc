@@ -9,6 +9,7 @@ extern int fsync(int);extern int fchmod(int,unsigned short);extern long read(int
 #define FV_KAB_DIR_FLAGS (FV_KAB_O_DIRECTORY|FV_KAB_O_NOFOLLOW|FV_KAB_O_CLOEXEC)
 #define FV_KAB_FILE_FLAGS (1|0x00000200|0x00000800|FV_KAB_O_NOFOLLOW|FV_KAB_O_CLOEXEC)
 static char fvKABSceneKey,fvKABStampKey,fvKABPathKey,fvKABBundleKey;
+static char fvKABMeasuredKey,fvKABPublishedMeasuredKey;
 static void fvKABPutNumber(id d,const char *key,double n){
  id v=((id(*)(id,SEL,double))objc_msgSend)(objc_getClass("NSNumber"),S("numberWithDouble:"),n);fvGPut(d,key,v);
 }
@@ -81,6 +82,24 @@ static id fvKABSceneName(id host){
  id scene=ivar(host,"appScene");if(!fvGHas(scene,"identifier"))return 0;
  id name=SEND(scene,"identifier");return fvGKind(name,objc_getClass("NSString"))?name:0;
 }
+static void fvKDRecordMeasuredKeys(id host,Rect keys,Rect target,U version,double stamp){
+ if(!fvKDMeasurementCurrent(host,version)||!fvGRect(keys)||!fvGRect(target)||!__builtin_isfinite(stamp))return;
+ id scene=fvKABSceneName(host);if(!scene)return;
+ id previous=objc_getAssociatedObject(host,&fvKABMeasuredKey);
+ if(previous&&((double(*)(id,SEL))objc_msgSend)(fvGGet(previous,"keysSequence"),S("doubleValue"))==(double)version&&
+    fvGIdentical(previous,"mountToken",objc_getAssociatedObject(host,&fvFMMountTokenKey))&&
+    fvGGet(previous,"scene")&&((BOOL(*)(id,SEL,id))objc_msgSend)(fvGGet(previous,"scene"),S("isEqualToString:"),scene)&&
+    fabs(((double(*)(id,SEL))objc_msgSend)(fvGGet(previous,"measuredTargetWidth"),S("doubleValue"))-target.size.width)<.5&&
+    fabs(((double(*)(id,SEL))objc_msgSend)(fvGGet(previous,"measuredTargetHeight"),S("doubleValue"))-target.size.height)<.5)return;
+ id data=SEND(objc_getClass("NSMutableDictionary"),"dictionary");
+ fvGIdentity(data,"mountToken",objc_getAssociatedObject(host,&fvFMMountTokenKey));
+ fvGPut(data,"scene",scene);
+ fvKABPutNumber(data,"keysVersion",1);fvKABPutNumber(data,"keysSequence",(double)version);fvKABPutNumber(data,"keysStamp",stamp);
+ fvKABPutNumber(data,"keysX",keys.origin.x);fvKABPutNumber(data,"keysY",keys.origin.y);
+ fvKABPutNumber(data,"keysWidth",keys.size.width);fvKABPutNumber(data,"keysHeight",keys.size.height);
+ fvKABPutNumber(data,"measuredTargetWidth",target.size.width);fvKABPutNumber(data,"measuredTargetHeight",target.size.height);
+ objc_setAssociatedObject(host,&fvKABMeasuredKey,data,1);
+}
 static void fvKABReport(const char*message){static unsigned budget=12;if(budget){budget--;trace(message);}}
 static void fvKDPublishHost(id host){
  if(!fvGMain()||!enabled()||!host||objc_getAssociatedObject(host,&fvGLeavingKey)||objc_getAssociatedObject(host,&fvGFullscreenKey))return;
@@ -103,10 +122,23 @@ static void fvKDPublishHost(id host){
  if(!fvGRect(target)||!fvGRect(source)||fabs(target.size.height-target.size.width*16.0/9.0)>.5||
     fabs(target.size.width-source.size.width)>.5||source.size.height<=target.size.height+.5)return;
  double now=CFAbsoluteTimeGetCurrent();
+ id measured=objc_getAssociatedObject(host,&fvKABMeasuredKey);
+ if(measured){
+  id measurementScene=fvGGet(measured,"scene");
+  double keyStamp=((double(*)(id,SEL))objc_msgSend)(fvGGet(measured,"keysStamp"),S("doubleValue"));
+  double width=((double(*)(id,SEL))objc_msgSend)(fvGGet(measured,"measuredTargetWidth"),S("doubleValue"));
+  double height=((double(*)(id,SEL))objc_msgSend)(fvGGet(measured,"measuredTargetHeight"),S("doubleValue"));
+  U sequence=(U)((double(*)(id,SEL))objc_msgSend)(fvGGet(measured,"keysSequence"),S("doubleValue"));
+  if(!measurementScene||!((BOOL(*)(id,SEL,id))objc_msgSend)(measurementScene,S("isEqualToString:"),sceneName)||
+     !fvGIdentical(measured,"mountToken",objc_getAssociatedObject(host,&fvFMMountTokenKey))||
+     !fvKDMeasurementCurrent(host,sequence)||now<keyStamp||now-keyStamp>3||
+     fabs(width-target.size.width)>.5||fabs(height-target.size.height)>.5)measured=0;
+ }
+ BOOL newMeasurement=measured&&measured!=objc_getAssociatedObject(host,&fvKABPublishedMeasuredKey);
  id prior=objc_getAssociatedObject(host,&fvKABSceneKey),priorStamp=objc_getAssociatedObject(host,&fvKABStampKey);
  double previous=priorStamp?((double(*)(id,SEL))objc_msgSend)(priorStamp,S("doubleValue")):0;
  id priorBundle=objc_getAssociatedObject(host,&fvKABBundleKey);
- if(prior&&priorBundle&&((BOOL(*)(id,SEL,id))objc_msgSend)(prior,S("isEqualToString:"),sceneName)&&
+ if(!newMeasurement&&prior&&priorBundle&&((BOOL(*)(id,SEL,id))objc_msgSend)(prior,S("isEqualToString:"),sceneName)&&
     ((BOOL(*)(id,SEL,id))objc_msgSend)(priorBundle,S("isEqualToString:"),bundle)&&now>=previous&&now-previous<2)return;
  const char *pathReason=0;id path=0;int cacheFD=fvKABOpenCaches(bundle,&pathReason,&path);
  if(cacheFD<0){char line[240];__builtin_snprintf(line,sizeof line,"KB app bridge skipped: %s",pathReason?pathReason:"app container unresolved");fvKABReport(line);return;}
@@ -118,8 +150,13 @@ static void fvKDPublishHost(id host){
  fvKABPutNumber(packet,"targetWidth",target.size.width);fvKABPutNumber(packet,"targetHeight",target.size.height);
  fvKABPutNumber(packet,"sourceX",source.origin.x);fvKABPutNumber(packet,"sourceY",source.origin.y);
  fvKABPutNumber(packet,"sourceWidth",source.size.width);fvKABPutNumber(packet,"sourceHeight",source.size.height);
+ if(measured){
+  const char *fields[]={"keysVersion","keysSequence","keysStamp","keysX","keysY","keysWidth","keysHeight"};
+  for(unsigned i=0;i<sizeof(fields)/sizeof(fields[0]);i++)fvGPut(packet,fields[i],fvGGet(measured,fields[i]));
+ }
  BOOL ok=fvKABAtomicWrite(cacheFD,packet);close(cacheFD);
  if(ok){
+  objc_setAssociatedObject(host,&fvKABPublishedMeasuredKey,measured,1);
   objc_setAssociatedObject(host,&fvKABSceneKey,sceneName,1);
   objc_setAssociatedObject(host,&fvKABBundleKey,bundle,1);
   objc_setAssociatedObject(host,&fvKABPathKey,path,1);
@@ -131,6 +168,14 @@ static void fvKDPublishHost(id host){
  if(ok)__builtin_snprintf(line,sizeof line,"KB app bridge: per-app Scene ticket published stamp=%.3f target=%.1fx%.1f bundle=%.200s",now,target.size.width,target.size.height,bundleText?bundleText:"unknown");
  else __builtin_snprintf(line,sizeof line,"KB app bridge: per-app ticket atomic write failed");
  fvKABReport(line);
+ if(ok&&newMeasurement){
+  static unsigned measuredBudget=12;
+  if(measuredBudget){measuredBudget--;char details[240];
+   double keyHeight=((double(*)(id,SEL))objc_msgSend)(fvGGet(measured,"keysHeight"),S("doubleValue"));
+   double keyStamp=((double(*)(id,SEL))objc_msgSend)(fvGGet(measured,"keysStamp"),S("doubleValue"));
+   __builtin_snprintf(details,sizeof details,"KB measured ticket published keysHeight=%.2f keysStamp=%.3f bundle=%.120s",keyHeight,keyStamp,bundleText?bundleText:"unknown");trace(details);
+  }
+ }
 }
 static void fvKABRevokeDeferred(void *context){
  id work=context,path=fvGGet(context,"path"),bundle=fvGGet(context,"bundleID");
@@ -158,6 +203,7 @@ static void fvKDClearHostTicket(id host){
  if(path&&expected&&bundle&&stamp){
   fvGPut(work,"path",path);fvGPut(work,"scene",expected);fvGPut(work,"bundleID",bundle);fvGPut(work,"stamp",stamp);
  }
+ objc_setAssociatedObject(host,&fvKABMeasuredKey,0,1);objc_setAssociatedObject(host,&fvKABPublishedMeasuredKey,0,1);
  objc_setAssociatedObject(host,&fvKABSceneKey,0,1);objc_setAssociatedObject(host,&fvKABBundleKey,0,1);
  objc_setAssociatedObject(host,&fvKABPathKey,0,1);objc_setAssociatedObject(host,&fvKABStampKey,0,1);
  if(path&&expected&&bundle&&stamp){

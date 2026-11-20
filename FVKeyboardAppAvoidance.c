@@ -19,6 +19,7 @@ extern int open(const char*,int,...);extern long write(int,const void*,U);extern
 extern long read(int,void*,U);extern int *__error(void);
 extern U strlen(const char*);extern int snprintf(char*,U,const char*,...);
 #include "FVKeyboardAppFrameCore.h"
+#include "FVKeyboardAppMeasuredCore.h"
 #define S(v) sel_registerName(v)
 #define M0(o,s) ((id(*)(id,SEL))objc_msgSend)(o,S(s))
 #define M1(o,s,a) ((id(*)(id,SEL,id))objc_msgSend)(o,S(s),(id)(a))
@@ -44,7 +45,7 @@ static void appLog(const char*s){
  int fd=open(p,0x209,0600);if(fd>=0){
   id bundle=M0(M0(objc_getClass("NSBundle"),"mainBundle"),"bundleIdentifier");
   const char *bid=bundle?((const char*(*)(id,SEL))objc_msgSend)(bundle,S("UTF8String")):"unknown";
-  char line[1024];int length=snprintf(line,sizeof line,"[v=0.1.17 pid=%d stamp=%.3f bundle=%.200s] %.600s\n",getpid(),CFAbsoluteTimeGetCurrent(),bid?bid:"unknown",s);
+  char line[1024];int length=snprintf(line,sizeof line,"[v=0.1.18 pid=%d stamp=%.3f bundle=%.200s] %.600s\n",getpid(),CFAbsoluteTimeGetCurrent(),bid?bid:"unknown",s);
   if(length>0&&(U)length<sizeof line)write(fd,line,(U)length);
   close(fd);
  }
@@ -233,6 +234,16 @@ static int readBox(id value,Rect *out){
  if(!e||__builtin_strcmp(e,"{CGRect={CGPoint=dd}{CGSize=dd}}"))return 0;
  *out=rect(value,"CGRectValue");return fvKAFRect(core(*out));
 }
+static int measuredEvidence(id state,FVKARect source,FVKARect target,FVKARect *keys,double *sample,double *packet,double *sequence){
+ const char *fields[]={"keysVersion","keysSequence","keysStamp","keysX","keysY","keysWidth","keysHeight"};
+ for(unsigned i=0;i<sizeof(fields)/sizeof(fields[0]);i++){
+  id value=get(state,fields[i]);if(!isKind(value,"NSNumber")||!__builtin_isfinite(number(value)))return 0;
+ }
+ if(number(get(state,"keysVersion"))!=1)return 0;
+ *keys=(FVKARect){number(get(state,"keysX")),number(get(state,"keysY")),number(get(state,"keysWidth")),number(get(state,"keysHeight"))};
+ *sample=number(get(state,"keysStamp"));*packet=number(get(state,"stamp"));*sequence=number(get(state,"keysSequence"));
+ return fvKAFMeasuredFresh(source,target,*keys,CFAbsoluteTimeGetCurrent(),*sample,*packet,*sequence);
+}
 static id mappedInfo(id name,id object,id userInfo){
  if(!eventKind(name))return 0;
  if(!isKind(userInfo,"NSDictionary")){reportOnce(0,"real keyboard event unchanged: userInfo is not NSDictionary");return 0;}
@@ -263,16 +274,34 @@ static id mappedInfo(id name,id object,id userInfo){
  }
  const char *guardReason=0;
  if(!localTarget(state,object,&source,&target,&guardReason)){reportOnce(8,guardReason?guardReason:"Scene/window/orientation/size/freshness guard failed");return 0;}
- if(!fvKAFMap(source,target,core(end),&mapped)){reportOnce(7,"real keyboard event unchanged: end frame is not a full-width docked native-canvas keyboard");return 0;}
+ FVKARect measuredKeys={0};double measuredStamp=0,packetStamp=0,keySequence=0;
+ int hasMeasured=measuredEvidence(state,source,target,&measuredKeys,&measuredStamp,&packetStamp,&keySequence);
+ int measuredKind=0;double now=CFAbsoluteTimeGetCurrent();
+ if(hasMeasured){
+  measuredKind=fvKAFMapMeasured(source,target,measuredKeys,core(end),now,measuredStamp,packetStamp,keySequence,&mapped);
+  if(!measuredKind){reportOnce(19,"measured keyboard event unchanged: frame does not match current full/truncated key geometry or is already correct");return 0;}
+ }else{
+  reportOnce(20,"complete-height repair waiting: no fresh successful-dock measurement; legacy frame mapping only");
+  if(!fvKAFMap(source,target,core(end),&mapped)){reportOnce(7,"real keyboard event unchanged: end frame is not a full-width docked native-canvas keyboard");return 0;}
+ }
  id changed=M0(userInfo,"mutableCopy");if(!changed)return 0;
  Rect next={{mapped.x,mapped.y},{mapped.width,mapped.height}};
  id box=((id(*)(id,SEL,Rect))objc_msgSend)(objc_getClass("NSValue"),S("valueWithCGRect:"),next);
  M2(changed,"setObject:forKey:",box,text("UIKeyboardFrameEndUserInfoKey"));
  Rect begin;FVKARect mappedBegin;
- if(readBox(get(userInfo,"UIKeyboardFrameBeginUserInfoKey"),&begin)&&fvKAFMapBegin(source,target,core(begin),&mappedBegin)){
+ int beginOK=0;
+ if(readBox(get(userInfo,"UIKeyboardFrameBeginUserInfoKey"),&begin)){
+  beginOK=hasMeasured?fvKAFMapMeasuredBegin(source,target,measuredKeys,core(begin),now,measuredStamp,packetStamp,keySequence,&mappedBegin):fvKAFMapBegin(source,target,core(begin),&mappedBegin);
+ }
+ if(beginOK){
   Rect r={{mappedBegin.x,mappedBegin.y},{mappedBegin.width,mappedBegin.height}};
   box=((id(*)(id,SEL,Rect))objc_msgSend)(objc_getClass("NSValue"),S("valueWithCGRect:"),r);
   M2(changed,"setObject:forKey:",box,text("UIKeyboardFrameBeginUserInfoKey"));
+ }
+ if(measuredKind==2){
+  static unsigned completeBudget=8;if(completeBudget){completeBudget--;char line[320];
+   snprintf(line,sizeof line,"keyboard complete-height mapped source=(%.2f,%.2f,%.2f,%.2f) target=(%.2f,%.2f,%.2f,%.2f) keysStamp=%.3f sequence=%.0f",end.origin.x,end.origin.y,end.size.width,end.size.height,next.origin.x,next.origin.y,next.size.width,next.size.height,measuredStamp,keySequence);appLog(line);
+  }
  }
  if(mappedReportBudget){
   char line[256];snprintf(line,sizeof line,"real keyboard event mapped source=(%.2f,%.2f,%.2f,%.2f) target=(%.2f,%.2f,%.2f,%.2f); native timing preserved",end.origin.x,end.origin.y,end.size.width,end.size.height,next.origin.x,next.origin.y,next.size.width,next.size.height);

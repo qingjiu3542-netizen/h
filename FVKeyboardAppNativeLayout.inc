@@ -34,7 +34,23 @@ static int nativeLayoutEvidence(id remote,id scene,FVKARect *source,FVKARect *ta
  if(!((BOOL(*)(id,SEL))objc_msgSend)(native,S("keyboardOnScreen")))NATIVEFAIL("native keyboard is offscreen");
  if(!nativeMethodABI(native,"keyboardPositionWithIAV","{CGRect={CGPoint=dd}{CGSize=dd}}@:"))NATIVEFAIL("native keyboard rectangle getter unavailable or ABI mismatch");
  *keyboard=core(rect(native,"keyboardPositionWithIAV"));
- FVKARect mapped;if(!fvKAFMap(*source,*target,*keyboard,&mapped))NATIVEFAIL("native keyboard is not full-width source-docked geometry");
+ FVKARect measuredKeys;double keyStamp=0,packetStamp=0,sequence=0;
+ if(measuredEvidence(state,*source,*target,&measuredKeys,&keyStamp,&packetStamp,&sequence)){
+  int shape=fvKAFMeasuredShape(*source,*target,measuredKeys,*keyboard);
+  if(shape)*keyboard=measuredKeys;
+  else{
+   static unsigned rectBudget=4;if(rectBudget){rectBudget--;char details[300];
+    snprintf(details,sizeof details,"native layout state unrecognized rect=(%.2f,%.2f,%.2f,%.2f) measuredKeys=(%.2f,%.2f,%.2f,%.2f)",keyboard->x,keyboard->y,keyboard->width,keyboard->height,measuredKeys.x,measuredKeys.y,measuredKeys.width,measuredKeys.height);appLog(details);
+   }
+   NATIVEFAIL("native rectangle does not match fresh measured key geometry");
+  }
+ }
+ FVKARect mapped;if(!fvKAFMap(*source,*target,*keyboard,&mapped)){
+  static unsigned rawBudget=4;if(rawBudget){rawBudget--;char details[240];
+   snprintf(details,sizeof details,"native layout raw rect=(%.2f,%.2f,%.2f,%.2f) source=(%.2f,%.2f) target=(%.2f,%.2f)",keyboard->x,keyboard->y,keyboard->width,keyboard->height,source->width,source->height,target->width,target->height);appLog(details);
+  }
+  NATIVEFAIL("native keyboard is not full-width source-docked geometry");
+ }
  if(reason)*reason="native state and explicit Scene authorized";return 1;
 #undef NATIVEFAIL
 }

@@ -5,7 +5,9 @@
 #ifdef FV_KEYBOARD_DOCK_EXPERIMENT
 #include "FVKeyboardDockCore.h"
 static id fvKDObserver,fvKDLayers,fvKDScreen;
+extern double CFAbsoluteTimeGetCurrent(void);
 static Rect fvKDKeys;
+static double fvKDKeysStamp;
 static BOOL fvKDVisible,fvKDWriting;
 static char fvKDStateKey;
 static U fvKDVersion;
@@ -62,7 +64,7 @@ static void fvKDNote(id self,SEL cmd,id note){
  FVRect b={screen.origin.x,screen.origin.y,screen.size.width,screen.size.height};
  if(!fvKAIntersects(a,b)){if(source==fvKDScreen)fvKDClear();return;}
  if(!fvKDVisible)fvKDReport("KB dock notification: source-screen key rectangle received");
- SEND(source,"retain");SEND(fvKDScreen,"release");fvKDScreen=source;fvKDKeys=keys;fvKDVersion++;fvKDVisible=1;
+ SEND(source,"retain");SEND(fvKDScreen,"release");fvKDScreen=source;fvKDKeys=keys;fvKDKeysStamp=CFAbsoluteTimeGetCurrent();fvKDVersion++;fvKDVisible=1;
 }
 static FVKAOriginalMode fvKDMode(long orientation){
  const char *key=fvKAOriginalModeKey((int)orientation);if(!key)return FVKAOriginalModeUnknown;
@@ -109,6 +111,12 @@ static int fvKDFlag(id item,const char *name){
  }
  return value;
 }
+#ifdef FV_KEYBOARD_APP_AVOIDANCE_BRIDGE
+static int fvKDMeasurementCurrent(id host,U version){
+ return fvGMain()&&fvKDVisible&&version==fvKDVersion&&host&&
+  SEND(SEND(host,"window"),"screen")==fvKDScreen;
+}
+#endif
 static int fvKDCurrent(id work,id parent,id window){
  id layer=fvGGet(work,"layer"),host=fvGGet(work,"host"),item=fvGGet(work,"item");
  id ratioState=objc_getAssociatedObject(host,&fvGStateKey);
@@ -206,6 +214,7 @@ static void fvKDDock(id work){
   if(fvKDCurrent(work,parent,window)&&version==fvKDVersion&&fvKDOwns(layer,state)){
    objc_setAssociatedObject(layer,&fvKDStateKey,state,1);SEND(fvKDLayers,"addObject:",layer);
 #ifdef FV_KEYBOARD_APP_AVOIDANCE_BRIDGE
+   if(mode==FVKAOriginalModeInner)fvKDRecordMeasuredKeys(host,fvKDKeys,logical,version,fvKDKeysStamp);
    fvKDPublishHost(host);
 #endif
    extern int snprintf(char *,U,const char *,...);
