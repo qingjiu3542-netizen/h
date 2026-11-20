@@ -214,7 +214,7 @@ static void fvKHInstall(void){
  }
  remoteChangedDone:
  for(unsigned a=0;a<2;a++)for(unsigned b=0;b<2;b++){
-  char methodTypes[80];snprintf(methodTypes,sizeof methodTypes,"v@:%cdBB@",bools[a]);
+  char methodTypes[80];snprintf(methodTypes,sizeof methodTypes,"v@:%cdBB@",bools[a][0]);
   if(fvKHHook("_UIKeyboardArbiterClientInputDestination","inputDestinationDidChange:withIAVHeight:isIAVRelevant:notifyRemote:forScene:",methodTypes,(IMP)fvKHIAVHook,&fvKHIAVHeightOriginal)){installed|=256;break;}
  }
  char line[340];snprintf(line,sizeof line,"KHROUTE v0.1.22 installedMask=%u show=%u updateArbiter=%u prepareScreen=%u signal=%u queueState=%u arbiterChange=%u remoteChange=%u queueCompletion=%u iavHeight=%u; native-ratio comparison only; no geometry rewrite",installed,!!(installed&1),!!(installed&2),!!(installed&4),!!(installed&8),!!(installed&16),!!(installed&32),!!(installed&64),!!(installed&128),!!(installed&256));trace(line);
