@@ -45,7 +45,7 @@ static void appLog(const char*s){
  int fd=open(p,0x209,0600);if(fd>=0){
   id bundle=M0(M0(objc_getClass("NSBundle"),"mainBundle"),"bundleIdentifier");
   const char *bid=bundle?((const char*(*)(id,SEL))objc_msgSend)(bundle,S("UTF8String")):"unknown";
-  char line[1024];int length=snprintf(line,sizeof line,"[v=0.1.18 pid=%d stamp=%.3f bundle=%.200s] %.600s\n",getpid(),CFAbsoluteTimeGetCurrent(),bid?bid:"unknown",s);
+  char line[1024];int length=snprintf(line,sizeof line,"[v=0.1.19 pid=%d stamp=%.3f bundle=%.200s] %.600s\n",getpid(),CFAbsoluteTimeGetCurrent(),bid?bid:"unknown",s);
   if(length>0&&(U)length<sizeof line)write(fd,line,(U)length);
   close(fd);
  }
@@ -244,6 +244,7 @@ static int measuredEvidence(id state,FVKARect source,FVKARect target,FVKARect *k
  *sample=number(get(state,"keysStamp"));*packet=number(get(state,"stamp"));*sequence=number(get(state,"keysSequence"));
  return fvKAFMeasuredFresh(source,target,*keys,CFAbsoluteTimeGetCurrent(),*sample,*packet,*sequence);
 }
+#include "FVKeyboardAppFirstEvent.inc"
 static id mappedInfo(id name,id object,id userInfo){
  if(!eventKind(name))return 0;
  if(!isKind(userInfo,"NSDictionary")){reportOnce(0,"real keyboard event unchanged: userInfo is not NSDictionary");return 0;}
@@ -276,8 +277,13 @@ static id mappedInfo(id name,id object,id userInfo){
  if(!localTarget(state,object,&source,&target,&guardReason)){reportOnce(8,guardReason?guardReason:"Scene/window/orientation/size/freshness guard failed");return 0;}
  FVKARect measuredKeys={0};double measuredStamp=0,packetStamp=0,keySequence=0;
  int hasMeasured=measuredEvidence(state,source,target,&measuredKeys,&measuredStamp,&packetStamp,&keySequence);
- int measuredKind=0;double now=CFAbsoluteTimeGetCurrent();
- if(hasMeasured){
+ int measuredKind=0;double now=CFAbsoluteTimeGetCurrent();int firstRoute=0;
+ FVKARect synchronousKeys={0};
+ if(sameEventEvidence(state,object,userInfo,source,target,core(end),&synchronousKeys,&firstRoute))measuredKeys=synchronousKeys;
+ if(firstRoute){
+  measuredKind=fvKAFMeasuredShape(source,target,measuredKeys,core(end));
+  if((measuredKind!=1&&measuredKind!=2)||!fvKAFMap(source,target,measuredKeys,&mapped))return 0;
+ }else if(hasMeasured){
   measuredKind=fvKAFMapMeasured(source,target,measuredKeys,core(end),now,measuredStamp,packetStamp,keySequence,&mapped);
   if(!measuredKind){reportOnce(19,"measured keyboard event unchanged: frame does not match current full/truncated key geometry or is already correct");return 0;}
  }else{
@@ -291,14 +297,19 @@ static id mappedInfo(id name,id object,id userInfo){
  Rect begin;FVKARect mappedBegin;
  int beginOK=0;
  if(readBox(get(userInfo,"UIKeyboardFrameBeginUserInfoKey"),&begin)){
-  beginOK=hasMeasured?fvKAFMapMeasuredBegin(source,target,measuredKeys,core(begin),now,measuredStamp,packetStamp,keySequence,&mappedBegin):fvKAFMapBegin(source,target,core(begin),&mappedBegin);
+  if(firstRoute)beginOK=fvKAFFirstEventBegin(source,target,measuredKeys,core(begin),&mappedBegin);
+  else beginOK=hasMeasured?fvKAFMapMeasuredBegin(source,target,measuredKeys,core(begin),now,measuredStamp,packetStamp,keySequence,&mappedBegin):fvKAFMapBegin(source,target,core(begin),&mappedBegin);
  }
  if(beginOK){
   Rect r={{mappedBegin.x,mappedBegin.y},{mappedBegin.width,mappedBegin.height}};
   box=((id(*)(id,SEL,Rect))objc_msgSend)(objc_getClass("NSValue"),S("valueWithCGRect:"),r);
   M2(changed,"setObject:forKey:",box,text("UIKeyboardFrameBeginUserInfoKey"));
  }
- if(measuredKind==2){
+ if(firstRoute&&firstSuccessBudget){
+  firstSuccessBudget--;char line[350];int will=equal(name,text("UIKeyboardWillShowNotification"))||equal(name,text("UIKeyboardWillChangeFrameNotification"));
+  snprintf(line,sizeof line,"first-event complete-height mapped route=%s will=%d source=(%.2f,%.2f,%.2f,%.2f) target=(%.2f,%.2f,%.2f,%.2f); native timing preserved",firstRoute==2?"native-preparation":"same-notification-bounds",will,end.origin.x,end.origin.y,end.size.width,end.size.height,next.origin.x,next.origin.y,next.size.width,next.size.height);appLog(line);
+ }
+ if(measuredKind==2&&!firstRoute){
   static unsigned completeBudget=8;if(completeBudget){completeBudget--;char line[320];
    snprintf(line,sizeof line,"keyboard complete-height mapped source=(%.2f,%.2f,%.2f,%.2f) target=(%.2f,%.2f,%.2f,%.2f) keysStamp=%.3f sequence=%.0f",end.origin.x,end.origin.y,end.size.width,end.size.height,next.origin.x,next.origin.y,next.size.width,next.size.height,measuredStamp,keySequence);appLog(line);
   }
@@ -346,6 +357,7 @@ static void install(void *unused){
  id defaultCenter=M0(objc_getClass("NSNotificationCenter"),"defaultCenter");
  if(!defaultCenter){report("adapter install failed: default notification center unavailable");return;}
  Class center=object_getClass(defaultCenter);if(!center){report("adapter install failed: notification-center class unavailable");return;}
+ installFirstEvent();
  installNativeLayout();
  installObserver(defaultCenter);
  Method a=class_getInstanceMethod(center,S("postNotificationName:object:userInfo:"));

@@ -14,14 +14,17 @@ prefix=r'''
 #include <stdio.h>
 #include <string.h>
 #include "FVKeyboardAppMeasuredCore.h"
+#include "FVKeyboardAppFirstEventCore.h"
 typedef void *id;typedef void *SEL;typedef signed char BOOL;
 typedef struct {double x,y;} Point;typedef struct{double width,height;} Size;typedef struct{Point origin;Size size;} Rect;
 static int stateObject,infoObject,changedObject,screenObject,endObject,beginObject;
 static double values[9],one=1,now=816842874;static int hasKeys=1,authorized=1,copyCount,setCount,logCount;
-static unsigned rawFrameBudget=0,mappedReportBudget=4;
+static unsigned rawFrameBudget=0,mappedReportBudget=4,firstSuccessBudget=6;
 static Rect endRect,beginRect,outputEnd,outputBegin,boxes[8];static unsigned boxIndex;
 static const char *fields[]={"keysVersion","keysSequence","keysStamp","keysX","keysY","keysWidth","keysHeight","stamp"};
+static int equal(id a,id b){return a&&b&&!strcmp(a,b);}
 static id text(const char *p){return (id)p;}
+static int sameEventEvidence(id st,id obj,id info,FVKARect s,FVKARect t,FVKARect in,FVKARect *keys,int *route){(void)st;(void)obj;(void)info;(void)s;(void)t;(void)in;(void)keys;*route=0;return 0;}
 #define S(x) ((SEL)(x))
 static id objc_getClass(const char *p){return (id)p;}
 static BOOL fakeThread(id object,SEL cmd){(void)object;(void)cmd;return 1;}
