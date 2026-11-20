@@ -170,10 +170,10 @@ static void fvKHRemoteChanged(id self,SEL cmd,id information,BOOL snapshot,BOOL 
  if(!(scope.previous&(1u<<6)))fvKHRecord(6,self,fvKHObject(self,"requiredScene"),(Rect){{0,0},{0,0}},(Rect){{0,0},{0,0}},snapshot,local,-1,information,0,0);
  ((void(*)(id,SEL,id,BOOL,BOOL))fvKHRemoteChangedOriginal)(self,cmd,information,snapshot,local);
 }
-static double fvKHIAVHook(id self,SEL cmd,double height,BOOL relevant,BOOL notify,id scene){
+static void fvKHIAVHook(id self,SEL cmd,BOOL destination,double height,BOOL relevant,BOOL notify,id scene){
  FVKHScope scope __attribute__((cleanup(fvKHClose)))={fvKHDepth};fvKHDepth|=1u<<9;
- if(!(scope.previous&(1u<<9))){Rect marker={{0,0},{430,height}};fvKHRecord(9,self,scene,marker,(Rect){{0,0},{0,0}},relevant,1,notify,0,0,0);}
- return ((double(*)(id,SEL,double,BOOL,BOOL,id))fvKHIAVHeightOriginal)(self,cmd,height,relevant,notify,scene);
+ if(!(scope.previous&(1u<<9))){Rect marker={{0,0},{430,height}};fvKHRecord(9,self,scene,marker,(Rect){{0,0},{0,0}},relevant,destination,notify,0,0,0);}
+ ((void(*)(id,SEL,BOOL,double,BOOL,BOOL,id))fvKHIAVHeightOriginal)(self,cmd,destination,height,relevant,notify,scene);
 }
 static int fvKHHook(const char *className,const char *selector,const char *expected,IMP replacement,IMP *old){
  Class cls=objc_getClass(className);Method method=cls?class_getInstanceMethod(cls,S(selector)):0;
@@ -214,7 +214,7 @@ static void fvKHInstall(void){
  }
  remoteChangedDone:
  for(unsigned a=0;a<2;a++)for(unsigned b=0;b<2;b++){
-  char methodTypes[80];snprintf(methodTypes,sizeof methodTypes,"d@:d%s%s@",bools[a],bools[b]);
+  char methodTypes[80];snprintf(methodTypes,sizeof methodTypes,"v@:%cdBB@",bools[a]);
   if(fvKHHook("_UIKeyboardArbiterClientInputDestination","inputDestinationDidChange:withIAVHeight:isIAVRelevant:notifyRemote:forScene:",methodTypes,(IMP)fvKHIAVHook,&fvKHIAVHeightOriginal)){installed|=256;break;}
  }
  char line[340];snprintf(line,sizeof line,"KHROUTE v0.1.22 installedMask=%u show=%u updateArbiter=%u prepareScreen=%u signal=%u queueState=%u arbiterChange=%u remoteChange=%u queueCompletion=%u iavHeight=%u; native-ratio comparison only; no geometry rewrite",installed,!!(installed&1),!!(installed&2),!!(installed&4),!!(installed&8),!!(installed&16),!!(installed&32),!!(installed&64),!!(installed&128),!!(installed&256));trace(line);

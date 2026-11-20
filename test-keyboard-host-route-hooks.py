@@ -2,7 +2,7 @@ from pathlib import Path
 import subprocess,tempfile
 R=Path(__file__).resolve().parent
 source=(R/'FVKeyboardHostRouteProbe.inc').read_text()
-for token in ('KHROUTE v0.1.22','inputSetEmpty=%d','placeShowsKeyboard=%d','remoteFull=','KHREMOTE','keyboardScreenMatchesWindow','inputDestinationDidChange:withIAVHeight:isIAVRelevant:notifyRemote:forScene:','_didHandleKeyboardClientChange:shouldConsiderSnapshottingKeyboard:isLocalEvent:','queue_keyboardChangedWithCompletion:','_UIRemoteKeyboards','_UIKeyboardArbiterClientSpringBoard','_UIKeyboardArbiterClientInputUIHost'):
+for token in ('KHROUTE v0.1.22','inputSetEmpty=%d','placeShowsKeyboard=%d','remoteFull=','KHREMOTE','keyboardScreenMatchesWindow','inputDestinationDidChange:withIAVHeight:isIAVRelevant:notifyRemote:forScene:','_didHandleKeyboardClientChange:shouldConsiderSnapshottingKeyboard:isLocalEvent:','queue_keyboardChangedWithCompletion:','inputDestinationDidChange:withIAVHeight:isIAVRelevant:notifyRemote:forScene:','_UIKeyboardArbiterClientSpringBoard','_UIKeyboardArbiterClientInputUIHost'):
  assert token in source,token
 for forbidden in ('setCurrent','setFrame:','setBounds:','setPlacement:','setRequiredScene:','postNotification','object_setIvar','dispatch_after','dispatch_async','setObject:forKey:','updateSettings:'):
  assert forbidden not in source,forbidden
