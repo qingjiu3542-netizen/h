@@ -225,15 +225,15 @@ static void fvKDRestoreLayersForHost(id host){
  if(!fvGMain()||!host||fvKDWriting||!fvKDLayers)return;
  id layers=SEND(SEND(fvKDLayers,"allObjects"),"retain");U n=(U)SEND(layers,"count");
  for(U i=0;i<n;i++){
-  id layer=SEND(layers,"objectAtIndex:"),state=objc_getAssociatedObject(layer,&fvKDStateKey);
+  id layer=SEND(layers,"objectAtIndex:",i),state=objc_getAssociatedObject(layer,&fvKDStateKey);
   if(state&&fvGIdentical(state,"host",host))fvKDRestore(layer);
  }
  SEND(layers,"release");
 }
 static void fvKDDropForHost(id host){
-#ifdef FV_KEYBOARD_APP_AVOIDANCE_BRIDGE
- fvKDClearHostTicket(host);
-#endif
+ /* Never perform ticket/cache/LaunchServices I/O from a UIView hierarchy
+  * callback. The authorized app event path fails closed on fullscreen because
+  * its Scene/window bounds no longer match; the ticket expires on its own. */
  fvKDRestoreLayersForHost(host);
 }
 static void fvKDDeferred(void *context){id work=context;fvKDDock(work);SEND(work,"release");}

@@ -16,6 +16,7 @@ extern void dispatch_after_f(unsigned long long,void*,void*,void(*)(void*));
 extern double CFAbsoluteTimeGetCurrent(void);extern void NSLog(id,...);
 extern id NSHomeDirectory(void);
 extern int open(const char*,int,...);extern long write(int,const void*,U);extern int close(int);
+extern long read(int,void*,U);extern int *__error(void);
 extern U strlen(const char*);extern int snprintf(char*,U,const char*,...);
 #include "FVKeyboardAppFrameCore.h"
 #define S(v) sel_registerName(v)
@@ -99,8 +100,19 @@ static id mainBundleID(void){
 }
 static id readState(id appBundle,const char **reason){
  id path=appCachePath(reason);if(!path)return 0;
- id p=M1(objc_getClass("NSDictionary"),"dictionaryWithContentsOfFile:",path);
- if(!isKind(p,"NSDictionary")){if(reason)*reason="per-app Scene ticket missing or unreadable";return 0;}
+ const char *file=((const char*(*)(id,SEL))objc_msgSend)(path,S("fileSystemRepresentation"));
+ if(!file){if(reason)*reason="per-app ticket path has no filesystem representation";return 0;}
+ int fd=open(file,0|0x00000100|0x01000000|0x00000004);
+ if(fd<0){int e=*__error();char line[160];snprintf(line,sizeof line,"per-app ticket open failed errno=%d",e);reportOnce(12,line);if(reason)*reason="per-app Scene ticket open failed";return 0;}
+ unsigned char bytes[8192];U length=0;int readError=0;
+ while(length<sizeof bytes){long n=read(fd,bytes+length,sizeof bytes-length);if(n<0){readError=*__error();break;}if(n==0)break;length+=(U)n;}
+ close(fd);
+ if(readError||length==0||length==sizeof bytes){char line[160];snprintf(line,sizeof line,"per-app ticket read failed errno=%d bytes=%lu",readError,(unsigned long)length);reportOnce(13,line);if(reason)*reason="per-app Scene ticket read failed or exceeded size limit";return 0;}
+ id data=((id(*)(id,SEL,const void*,U))objc_msgSend)(objc_getClass("NSData"),S("dataWithBytes:length:"),bytes,length);
+ id error=0,format=0;
+ id p=((id(*)(id,SEL,id,U,id,id*))objc_msgSend)(objc_getClass("NSPropertyListSerialization"),S("propertyListWithData:options:format:error:"),data,(U)0,&format,&error);
+ if(!p){reportOnce(14,"per-app ticket plist parse failed after successful file read");if(reason)*reason="per-app Scene ticket plist parse failed";return 0;}
+ if(!isKind(p,"NSDictionary")){reportOnce(15,"per-app ticket root object is not NSDictionary");if(reason)*reason="per-app Scene ticket root is not dictionary";return 0;}
  id schema=get(p,"schema"),enabledValue=get(p,"enabled"),scene=get(p,"scene"),bundle=get(p,"bundleID");
  if(!isKind(schema,"NSNumber")||!isKind(enabledValue,"NSNumber")||!isKind(scene,"NSString")||!isKind(bundle,"NSString")){
   if(reason)*reason="per-app ticket schema/identity fields missing or invalid";return 0;
@@ -112,8 +124,9 @@ static id readState(id appBundle,const char **reason){
  for(unsigned i=0;i<sizeof(keys)/sizeof(keys[0]);i++){
   id v=get(p,keys[i]);if(!isKind(v,"NSNumber")||!__builtin_isfinite(number(v))){if(reason)*reason="per-app ticket contains missing or nonnumeric geometry field";return 0;}
  }
- return p;
+ if(reason)*reason="ticket read and parsed";return p;
 }
+
 static int localTarget(id state,id eventObject,FVKARect *native,FVKARect *target,const char **reason){
 #define FAIL(message) do{if(reason)*reason=message;return 0;}while(0)
  id app=M0(objc_getClass("UIApplication"),"sharedApplication");
