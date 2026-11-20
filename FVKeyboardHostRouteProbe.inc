@@ -10,11 +10,21 @@ extern void free(void *);
 extern const char *class_getName(Class);
 extern double CFAbsoluteTimeGetCurrent(void);
 extern int snprintf(char *,U,const char *,...);
+extern int getpid(void);
 static void fvKHLog(const char *event){
  char line[1500];int n=snprintf(line,sizeof line,"%s\n",event);if(n<=0)return;
  U length=(U)n;if(length>=sizeof line)length=sizeof line-1;
  const char *paths[]={"/tmp/FVAspect8.log","/var/mobile/Library/Preferences/FVAspect8.log"};
  for(unsigned i=0;i<2;i++){int fd=open(paths[i],0x209,0644);if(fd>=0){write(fd,line,length);close(fd);}}
+}
+static unsigned char fvKHCorrelationSalt;
+static unsigned long long fvKHToken(id object){
+ return fvKHObjectToken((unsigned long long)(U)object,(unsigned long long)(U)&fvKHCorrelationSalt);
+}
+static void fvKHCorrelation(unsigned seq,unsigned kind,int isMain,unsigned mode,id receiver,id context,id state){
+ const char *role=kind==8?(isMain?"receiver-current-prestate":"not-sampled-off-main"):
+  (kind==3||kind==4||kind==5||kind==6)?"original-state-argument":"no-state-argument";
+ char line[480];snprintf(line,sizeof line,"KHCORR seq=%u pid=%d route=%u main=%d modeSnapshot=%u receiverToken=%016llx contextToken=%016llx stateToken=%016llx stateRole=%s; equality-hint-only, pointer-reuse-possible, not-target-authorization",seq,getpid(),kind,isMain,mode,fvKHToken(receiver),fvKHToken(context),fvKHToken(state),role);fvKHLog(line);
 }
 static id fvKHHosts;
 static volatile unsigned fvKHCurrentMode;
@@ -71,6 +81,7 @@ static void fvKHRecord(unsigned kind,id receiver,id eventScene,Rect plain,Rect i
  if(!isMain){
   static unsigned workerCounts[10][2];if(!fvKHTake(&workerCounts[kind][mode],12))return;
   unsigned seq=__atomic_add_fetch(&fvKHSequence,1u,__ATOMIC_RELAXED);char line[420];
+  fvKHCorrelation(seq,kind,0,mode,receiver,eventScene,state);
   snprintf(line,sizeof line,"KHWORKER seq=%u route=%u modeSnapshot=%u scalar1=%d scalar2=%d notify=%d plain=(%.3f,%.3f,%.3f,%.3f) iav=(%.3f,%.3f,%.3f,%.3f); argument-only, no object getters or host enumeration",seq,kind,mode,relevant,showing,notify,plain.origin.x,plain.origin.y,plain.size.width,plain.size.height,iav.origin.x,iav.origin.y,iav.size.width,iav.size.height);fvKHLog(line);return;
  }
  int empty=-1,placeKeyboard=-1,placeInputs=-1,undocked=-1,interactive=-1;double extended=-1;
@@ -92,6 +103,7 @@ static void fvKHRecord(unsigned kind,id receiver,id eventScene,Rect plain,Rect i
  unsigned cap=active?((kind<=2||kind==5||kind==6)?8:4):2;
  if(!fvKHTake(counter,cap))return;
  unsigned seq=__atomic_add_fetch(&fvKHSequence,1u,__ATOMIC_RELAXED),sceneHash=fvKHSceneHash(eventScene);
+ fvKHCorrelation(seq,kind,1,mode,receiver,eventScene,state);
  char line[1100];
  const char *routeNames[]={"show-window-scene","update-arbiter-scene","prepare-keyboard-scene","signal-arbiter-state","queue-arbiter-state","arbiter-client-change","remote-did-handle-change","unused","queue-with-completion-prestate","input-destination-change"};
  const char *name=receiver?class_getName(object_getClass(receiver)):"nil";

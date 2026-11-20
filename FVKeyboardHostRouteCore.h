@@ -23,4 +23,15 @@ static inline unsigned fvKHIdentifierHash(const char *text){
  for(unsigned i=0;text[i]&&i<512;i++)hash=(hash^(unsigned char)text[i])*16777619u;
  return hash;
 }
+/* Equality hint within one process/session only. Not an authorization key,
+ * not cryptographic redaction, and never proof of receiver ownership.
+ * Caller passes the pointer VALUE; this function never dereferences it. */
+static inline unsigned long long fvKHObjectToken(unsigned long long value,unsigned long long salt){
+ if(!value)return 0;
+ unsigned long long x=value^salt;
+ x^=x>>30;x*=0xbf58476d1ce4e5b9ULL;
+ x^=x>>27;x*=0x94d049bb133111ebULL;
+ x^=x>>31;
+ return x;
+}
 #endif

@@ -14,6 +14,8 @@ assert '"keyboardChanged:shouldConsiderSnapshottingKeyboard:isLocalEvent:"' not 
 assert 'class_copyMethodList' in source
 subprocess.run(['python3',str(R/'test-keyboard-host-route-abi.py')],check=True)
 subprocess.run(['python3',str(R/'test-keyboard-host-route-iav.py')],check=True)
+subprocess.run(['python3',str(R/'test-keyboard-host-route-correlation.py')],check=True)
+subprocess.run(['python3',str(R/'test-host-route-log.py')],check=True)
 assert 'weakObjectsHashTable' in source
 # Compile the shared strict ABI core under warnings-as-errors.
 with tempfile.TemporaryDirectory() as td:
