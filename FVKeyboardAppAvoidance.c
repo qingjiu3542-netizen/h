@@ -14,7 +14,7 @@ extern void dispatch_async_f(void*,void*,void(*)(void*));extern void *_dispatch_
 extern unsigned long long dispatch_time(unsigned long long,long long);
 extern void dispatch_after_f(unsigned long long,void*,void*,void(*)(void*));
 extern double CFAbsoluteTimeGetCurrent(void);extern void NSLog(id,...);
-extern id NSHomeDirectory(void);
+extern id NSHomeDirectory(void);extern int getpid(void);
 extern int open(const char*,int,...);extern long write(int,const void*,U);extern int close(int);
 extern long read(int,void*,U);extern int *__error(void);
 extern U strlen(const char*);extern int snprintf(char*,U,const char*,...);
@@ -41,7 +41,13 @@ static id eventProbeObserver;
 static void appLog(const char*s){
  id path=M1(NSHomeDirectory(),"stringByAppendingPathComponent:",text("Library/Caches/FVKeyboardApp.log"));
  const char *p=((const char*(*)(id,SEL))objc_msgSend)(path,S("UTF8String"));if(!p)return;
- int fd=open(p,0x209,0600);if(fd>=0){write(fd,s,strlen(s));write(fd,"\n",1);close(fd);}
+ int fd=open(p,0x209,0600);if(fd>=0){
+  id bundle=M0(M0(objc_getClass("NSBundle"),"mainBundle"),"bundleIdentifier");
+  const char *bid=bundle?((const char*(*)(id,SEL))objc_msgSend)(bundle,S("UTF8String")):"unknown";
+  char prefix[320];int length=snprintf(prefix,sizeof prefix,"[v=0.1.17 pid=%d stamp=%.3f bundle=%.200s] ",getpid(),CFAbsoluteTimeGetCurrent(),bid?bid:"unknown");
+  if(length>0&&(U)length<sizeof prefix)write(fd,prefix,(U)length);
+  write(fd,s,strlen(s));write(fd,"\n",1);close(fd);
+ }
 }
 static void report(const char*s){if(reportBudget){reportBudget--;appLog(s);NSLog(text("[FVKeyboardApp] %s"),s);}}
 static void reportOnce(unsigned key,const char*s){unsigned bit=1u<<key;if(!(reportOnceMask&bit)){reportOnceMask|=bit;report(s);}}
@@ -98,12 +104,45 @@ static id mainBundleID(void){
  id identifier=bundle&&responds(bundle,"bundleIdentifier")?M0(bundle,"bundleIdentifier"):0;
  return isKind(identifier,"NSString")?identifier:0;
 }
-static id readState(id appBundle,const char **reason){
+/* An optional same-bundle canonical path, never a container scan. Home remains
+ * authoritative when present, including disabled or malformed tickets. */
+static int appObjectABI(id object,const char *selector,const char *types){
+ Method m=object?class_getInstanceMethod(object_getClass(object),S(selector)):0;
+ return m&&encoding(method_getTypeEncoding(m),types);
+}
+static id appProxyCachePath(id bundle){
+ static id cached;static double attempted=-10;
+ if(cached)return cached;double now=CFAbsoluteTimeGetCurrent();if(now-attempted<5)return 0;attempted=now;
+ Class cls=objc_getClass("LSApplicationProxy");if(!cls||!appObjectABI(cls,"applicationProxyForIdentifier:","@@:@")||!bundle)return 0;
+ id proxy=M1(cls,"applicationProxyForIdentifier:",bundle);
+ if(!appObjectABI(proxy,"applicationIdentifier","@@:")||!appObjectABI(proxy,"dataContainerURL","@@:")||!equal(M0(proxy,"applicationIdentifier"),bundle))return 0;
+ id url=M0(proxy,"dataContainerURL");if(!responds(url,"isFileURL")||!((BOOL(*)(id,SEL))objc_msgSend)(url,S("isFileURL"))||!responds(url,"path"))return 0;
+ id root=M0(M0(url,"path"),"stringByStandardizingPath");
+ const char *p=((const char*(*)(id,SEL))objc_msgSend)(root,S("UTF8String"));if(!p)return 0;
+ const char *a="/var/mobile/Containers/Data/Application/",*b="/private/var/mobile/Containers/Data/Application/";U prefix=0;
+ if(!__builtin_strncmp(p,a,strlen(a)))prefix=strlen(a);else if(!__builtin_strncmp(p,b,strlen(b)))prefix=strlen(b);else return 0;
+ if(!p[prefix])return 0;for(U i=prefix;p[i];i++)if(!((p[i]>='0'&&p[i]<='9')||(p[i]>='a'&&p[i]<='f')||(p[i]>='A'&&p[i]<='F')||p[i]=='-'))return 0;
+ id path=M1(root,"stringByAppendingPathComponent:",text("Library/Caches/com.minis.floatingview.keyboard-layout.plist"));
+ cached=M0(path,"retain");return cached;
+}
+static id readState(id appBundle,const char **reason,int *missing){
+ if(missing)*missing=0;
  id path=appCachePath(reason);if(!path)return 0;
  const char *file=((const char*(*)(id,SEL))objc_msgSend)(path,S("fileSystemRepresentation"));
  if(!file){if(reason)*reason="per-app ticket path has no filesystem representation";return 0;}
  int fd=open(file,0|0x00000100|0x01000000|0x00000004);
- if(fd<0){int e=*__error();char line[160];snprintf(line,sizeof line,"per-app ticket open failed errno=%d",e);reportOnce(12,line);if(reason)*reason="per-app Scene ticket open failed";return 0;}
+ int openError=fd<0?*__error():0;
+ if(fd<0&&openError==2){
+  id alternate=appProxyCachePath(appBundle);
+  if(alternate&&!equal(alternate,path)){
+   const char *other=((const char*(*)(id,SEL))objc_msgSend)(alternate,S("fileSystemRepresentation"));
+   if(other){
+    fd=open(other,0|0x00000100|0x01000000|0x00000004);openError=fd<0?*__error():0;
+    reportOnce(17,fd>=0?"per-app ticket opened from verified same-bundle canonical container":"per-app canonical container differs; ticket still cannot be opened");
+   }
+  }
+ }
+ if(fd<0){int e=openError;if(missing)*missing=(e==2);char line[160];snprintf(line,sizeof line,"per-app ticket open failed errno=%d",e);reportOnce(12,line);if(reason)*reason="per-app Scene ticket open failed";return 0;}
  unsigned char bytes[8192];U length=0;int readError=0;
  while(length<sizeof bytes){long n=read(fd,bytes+length,sizeof bytes-length);if(n<0){readError=*__error();break;}if(n==0)break;length+=(U)n;}
  close(fd);
@@ -124,15 +163,17 @@ static id readState(id appBundle,const char **reason){
  for(unsigned i=0;i<sizeof(keys)/sizeof(keys[0]);i++){
   id v=get(p,keys[i]);if(!isKind(v,"NSNumber")||!__builtin_isfinite(number(v))){if(reason)*reason="per-app ticket contains missing or nonnumeric geometry field";return 0;}
  }
+ reportOnce(18,"per-app ticket read and parsed: schema 2, matching bundle, enabled");
  if(reason)*reason="ticket read and parsed";return p;
 }
 
-static int liveTarget(id eventObject,FVKARect *native,FVKARect *target,const char **reason){
+static int liveTargetForScene(id eventObject,id requestedScene,FVKARect *native,FVKARect *target,const char **reason){
 #define LIVEFAIL(message) do{if(reason)*reason=message;return 0;}while(0)
  id app=M0(objc_getClass("UIApplication"),"sharedApplication");if(!responds(app,"connectedScenes"))LIVEFAIL("live geometry unavailable: no connectedScenes");
  id set=M0(app,"connectedScenes"),scenes=set?M0(set,"allObjects"):0;U n=scenes?(U)M0(scenes,"count"):0;id chosen=0,win=0;unsigned active=0;
  for(U i=0;i<n;i++){id s=((id(*)(id,SEL,U))objc_msgSend)(scenes,S("objectAtIndex:"),i);if(!isKind(s,"UIWindowScene")||!responds(s,"activationState"))continue;if(((long(*)(id,SEL))objc_msgSend)(s,S("activationState"))!=0)continue;active++;chosen=s;}
  if(active!=1||!chosen||!responds(chosen,"screen")||!responds(chosen,"interfaceOrientation"))LIVEFAIL("live geometry foreground Scene is not unique");
+ if(requestedScene&&requestedScene!=chosen)LIVEFAIL("native layout query Scene is not the unique foreground Scene");
  id screen=M0(chosen,"screen");if(!screen||!fvKAFEventScreenMatch(eventObject!=0,eventObject&&isKind(eventObject,"UIScreen"),eventObject==screen))LIVEFAIL("live geometry screen mismatch");
  if(((long(*)(id,SEL))objc_msgSend)(chosen,S("interfaceOrientation"))!=1)LIVEFAIL("live geometry is not portrait");
  id windows=M0(chosen,"windows");if(!windows)LIVEFAIL("live geometry has no windows");n=(U)M0(windows,"count");
@@ -199,12 +240,13 @@ static id mappedInfo(id name,id object,id userInfo){
  id local=get(userInfo,"UIKeyboardIsLocalUserInfoKey");if(!local||number(local)!=1){reportOnce(2,"real keyboard event unchanged: local-keyboard marker missing or false");return 0;}
  if(!((BOOL(*)(id,SEL))objc_msgSend)(objc_getClass("NSThread"),S("isMainThread"))){reportOnce(3,"real keyboard event unchanged: notification is not on main thread");return 0;}
  id appBundle=mainBundleID();if(!appBundle){reportOnce(9,"application bundle identifier unavailable");return 0;}
- const char *ticketReason=0;id state=readState(appBundle,&ticketReason);FVKARect source,target;Rect end;FVKARect mapped;
+ const char *ticketReason=0;int missing=0;id state=readState(appBundle,&ticketReason,&missing);FVKARect source,target;Rect end;FVKARect mapped;
  if(!readBox(get(userInfo,"UIKeyboardFrameEndUserInfoKey"),&end)){reportOnce(6,"real keyboard event unchanged: end frame is not supported CGRect");return 0;}
  if(rawFrameBudget){rawFrameBudget--;char line[240];snprintf(line,sizeof line,"native keyboard event end-frame=(%.2f,%.2f,%.2f,%.2f) objectScreen=%d local=%d",end.origin.x,end.origin.y,end.size.width,end.size.height,isKind(object,"UIScreen"),number(local)==1);report(line);}
  if(!state){
+  if(!missing){reportOnce(4,ticketReason?ticketReason:"per-app ticket denied; live fallback not permitted");return 0;}
   const char *liveReason=0;FVKARect liveSource,liveRect;
-  if(!liveTarget(object,&liveSource,&liveRect,&liveReason)){reportOnce(16,liveReason?liveReason:"per-app ticket unavailable and live geometry rejected");return 0;}
+  if(!liveTargetForScene(object,0,&liveSource,&liveRect,&liveReason)){reportOnce(16,liveReason?liveReason:"per-app ticket unavailable and live geometry rejected");return 0;}
   if(!fvKAFMap(liveSource,liveRect,core(end),&mapped))return 0;
   id changed=M0(userInfo,"mutableCopy");if(!changed)return 0;
   Rect next={{mapped.x,mapped.y},{mapped.width,mapped.height}};
@@ -267,6 +309,7 @@ static int hook(Class cls,const char *selector,const char *types,IMP replacement
  if(!class_addMethod(cls,S(selector),replacement,method_getTypeEncoding(m)))class_replaceMethod(cls,S(selector),replacement,method_getTypeEncoding(m));
  return 1;
 }
+#include "FVKeyboardAppNativeLayout.inc"
 static void install(void *unused){
  (void)unused;
  id bundle=M0(M0(objc_getClass("NSBundle"),"mainBundle"),"bundleIdentifier");
@@ -274,6 +317,7 @@ static void install(void *unused){
  id defaultCenter=M0(objc_getClass("NSNotificationCenter"),"defaultCenter");
  if(!defaultCenter){report("adapter install failed: default notification center unavailable");return;}
  Class center=object_getClass(defaultCenter);if(!center){report("adapter install failed: notification-center class unavailable");return;}
+ installNativeLayout();
  installObserver(defaultCenter);
  Method a=class_getInstanceMethod(center,S("postNotificationName:object:userInfo:"));
  Method b=class_getInstanceMethod(center,S("postNotification:"));

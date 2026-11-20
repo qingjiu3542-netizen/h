@@ -38,6 +38,22 @@ static inline int fvKAFMap(FVKARect source,FVKARect target,FVKARect input,FVKARe
  if(!fvKAFRect(result))return 0;
  *out=result;return 1;
 }
+/* Repair only the native query's demonstrable source-coordinate intersection.
+ * Respect UIKit zero/hidden, local-minimum overrides and already-correct values. */
+static inline int fvKAFNativeIntersection(FVKARect source,FVKARect target,FVKARect keyboard,
+ double original,int localMinimum,double *out){
+ if(!out)return 0;
+ *out=original;
+ if(localMinimum||!fvKAFNumber(original)||original<=0||
+    !fvKAFLiveViewportAllowed(1,1,1,1,source,target))return 0;
+ FVKARect mapped;if(!fvKAFMap(source,target,keyboard,&mapped))return 0;
+ double top=keyboard.y>target.y?keyboard.y:target.y;
+ double bottom=keyboard.y+keyboard.height<target.y+target.height?keyboard.y+keyboard.height:target.y+target.height;
+ double raw=bottom>top?bottom-top:0;
+ double desired=mapped.height;
+ if(raw<=0||fvKAFNear(original,desired)||!fvKAFNear(original,raw))return 0;
+ *out=desired;return 1;
+}
 static inline int fvKAFMapBegin(FVKARect source,FVKARect target,FVKARect input,FVKARect *out){
  if(fvKAFMap(source,target,input,out))return 1;
  if(!out||!fvKAFRect(source)||!fvKAFRect(target)||!fvKAFRect(input)||
