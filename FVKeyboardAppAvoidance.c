@@ -14,7 +14,8 @@ extern void dispatch_async_f(void*,void*,void(*)(void*));extern void *_dispatch_
 extern unsigned long long dispatch_time(unsigned long long,long long);
 extern void dispatch_after_f(unsigned long long,void*,void*,void(*)(void*));
 extern double CFAbsoluteTimeGetCurrent(void);extern void NSLog(id,...);
-extern id NSHomeDirectory(void);extern int getpid(void);
+extern id NSHomeDirectory(void);extern id NSTemporaryDirectory(void);extern int getpid(void);
+extern void syslog(int,const char*,...);
 extern int open(const char*,int,...);extern long write(int,const void*,U);extern int close(int);
 extern long read(int,void*,U);extern int *__error(void);
 extern U strlen(const char*);extern int snprintf(char*,U,const char*,...);
@@ -39,13 +40,21 @@ static int readBox(id value,Rect *out);
 static _Thread_local unsigned forwarding;
 static unsigned reportBudget=16,reportOnceMask,observedEventCount,rawFrameBudget=6,mappedReportBudget=4;
 static id eventProbeObserver;
+#include "FVKeyboardAppStatus.inc"
 static void appLog(const char*s){
  id path=M1(NSHomeDirectory(),"stringByAppendingPathComponent:",text("Library/Caches/FVKeyboardApp.log"));
  const char *p=((const char*(*)(id,SEL))objc_msgSend)(path,S("UTF8String"));if(!p)return;
- int fd=open(p,0x209,0600);if(fd>=0){
+ int fd=open(p,0x209|0x100|0x1000000|4,0600);
+ if(fd<0){
+  int saved=*__error();id fallback=M1(NSTemporaryDirectory(),"stringByAppendingPathComponent:",text("FVKeyboardApp.log"));
+  const char *tmp=((const char*(*)(id,SEL))objc_msgSend)(fallback,S("fileSystemRepresentation"));
+  if(tmp)fd=open(tmp,0x209|0x100|0x1000000|4,0600);
+  static unsigned failures=3;if(failures){failures--;syslog(5,"[FVKeyboardApp v0.1.20 pid=%d] Caches log open failed errno=%d tmpOpened=%d",getpid(),saved,fd>=0);}
+ }
+ if(fd>=0){
   id bundle=M0(M0(objc_getClass("NSBundle"),"mainBundle"),"bundleIdentifier");
   const char *bid=bundle?((const char*(*)(id,SEL))objc_msgSend)(bundle,S("UTF8String")):"unknown";
-  char line[1024];int length=snprintf(line,sizeof line,"[v=0.1.19 pid=%d stamp=%.3f bundle=%.200s] %.600s\n",getpid(),CFAbsoluteTimeGetCurrent(),bid?bid:"unknown",s);
+  char line[1024];int length=snprintf(line,sizeof line,"[v=0.1.20 pid=%d stamp=%.3f bundle=%.200s] %.600s\n",getpid(),CFAbsoluteTimeGetCurrent(),bid?bid:"unknown",s);
   if(length>0&&(U)length<sizeof line)write(fd,line,(U)length);
   close(fd);
  }
@@ -55,6 +64,7 @@ static void reportOnce(unsigned key,const char*s){unsigned bit=1u<<key;if(!(repo
 static void reportMapped(const char*s){if(mappedReportBudget){mappedReportBudget--;appLog(s);NSLog(text("[FVKeyboardApp] %s"),s);}}
 static void reportHookEntry(id name,id center,int namedRoute){
  if(!eventKind(name))return;
+ writeAppStatus(3);
  id main=M0(objc_getClass("NSNotificationCenter"),"defaultCenter");
  reportOnce(namedRoute?11:10,center==main?
   (namedRoute?"keyboard notification entered named-post hook on default center":"keyboard notification entered object-post hook on default center"):
@@ -62,6 +72,7 @@ static void reportHookEntry(id name,id center,int namedRoute){
 }
 static void keyboardObserved(id observer,SEL cmd,id note){
  (void)observer;(void)cmd;id name=M0(note,"name");if(!eventKind(name))return;
+ writeAppStatus(3);
  unsigned index=__atomic_fetch_add(&observedEventCount,1,__ATOMIC_RELAXED);if(index>=8)return;
  id info=M0(note,"userInfo"),object=M0(note,"object");Rect end;
  if(readBox(get(info,"UIKeyboardFrameEndUserInfoKey"),&end)){
@@ -318,6 +329,7 @@ static id mappedInfo(id name,id object,id userInfo){
   char line[256];snprintf(line,sizeof line,"real keyboard event mapped source=(%.2f,%.2f,%.2f,%.2f) target=(%.2f,%.2f,%.2f,%.2f); native timing preserved",end.origin.x,end.origin.y,end.size.width,end.size.height,next.origin.x,next.origin.y,next.size.width,next.size.height);
   reportMapped(line);
  }
+ writeAppStatus(4);
  return changed; /* caller owns; all unrelated native keys are preserved */
 }
 static void namedHook(id center,SEL cmd,id name,id object,id info){
@@ -354,6 +366,8 @@ static void install(void *unused){
  (void)unused;
  id bundle=M0(M0(objc_getClass("NSBundle"),"mainBundle"),"bundleIdentifier");
  if(equal(bundle,text("com.apple.springboard"))||equal(bundle,text("com.apple.Preferences")))return;
+ writeAppStatus(1);
+ appLog("application main-queue startup reached; awaiting adapter installation");
  id defaultCenter=M0(objc_getClass("NSNotificationCenter"),"defaultCenter");
  if(!defaultCenter){report("adapter install failed: default notification center unavailable");return;}
  Class center=object_getClass(defaultCenter);if(!center){report("adapter install failed: notification-center class unavailable");return;}
@@ -367,6 +381,10 @@ static void install(void *unused){
  int namedOK=hook(center,"postNotificationName:object:userInfo:","v@:@@@",(IMP)namedHook,&oldNamed);
  int noteOK=hook(center,"postNotification:","v@:@",(IMP)noteHook,&oldNote);
  if(!namedOK||!noteOK){report("adapter install failed: notification hook registration failed");return;}
+ writeAppStatus(2);
  report("portrait adapter installed; per-app Caches ticket schema 2; exact Scene/screen required; landscape unchanged");
 }
-__attribute__((constructor))static void start(void){dispatch_async_f(&_dispatch_main_q,0,install);}
+__attribute__((constructor))static void start(void){
+ syslog(5,"[FVKeyboardApp v0.1.20 pid=%d] library constructor reached; scheduling main-queue install",getpid());
+ dispatch_async_f(&_dispatch_main_q,0,install);
+}

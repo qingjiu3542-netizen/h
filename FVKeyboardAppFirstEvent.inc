@@ -93,5 +93,10 @@ static void installFirstEvent(void){
   char types[160];snprintf(types,sizeof types,"v@:%s%s%c@",r,r,flags?'c':'B');
   if(hook(cls,selector,types,(IMP)prepareScreenHook,&oldPrepareScreen)){installed=1;break;}
  }
+ if(!installed){
+  Method candidate=cls?class_getInstanceMethod(cls,S(selector)):0;
+  const char *actual=candidate?method_getTypeEncoding(candidate):0;
+  char diagnostic[300];snprintf(diagnostic,sizeof diagnostic,"first-event preparation unavailable classPresent=%d methodPresent=%d actualABI=%.180s; no unsupported hook installed",cls!=0,candidate!=0,actual?actual:"<absent>");appLog(diagnostic);
+ }
  char line[220];snprintf(line,sizeof line,"first-event adapter installed preparationSelectors=%u; same-dispatch evidence only; no waiting or replay",installed);appLog(line);
 }

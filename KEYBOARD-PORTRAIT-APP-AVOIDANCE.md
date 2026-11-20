@@ -2,6 +2,16 @@
 
 User priority: portrait chat input-bar avoidance first, then full landscape keyboard visibility. Extra six-point bottom clearance is withdrawn. Landscape remains unchanged and unsupported by this portrait experiment.
 
+## Version 0.1.20: cross-app observability, NOT a synchronization fix
+
+New device evidence rejects the 0.1.19 first-event hypothesis on the tested system: no compatible preparation selector was installed, while notification bounds were reduced to the same height as end-frame. The implementation correctly refused to promote that value to a full key height, but the lag persisted (~0.607s). Method availability versus ABI mismatch is now logged explicitly without adding an unsupported hook.
+
+The user reports no app log in another target app. The host publishes for that bundle, but this does not prove an application-process adapter ran. The constructor now writes a bounded system-log marker using no Foundation calls. Main-queue startup logs before registration. Caches log failures try the app's NSTemporaryDirectory()/FVKeyboardApp.log and write an errno/result marker to system logging. No private container paths, input content or conversation text are logged.
+
+A separate Library/Caches/com.minis.floatingview.keyboard-status.plist carries only schema=1, exact main bundle, version=0.1.20, PID, timestamp and monotonic per-process diagnostic stage: 1=main queue, 2=notification adapters installed, 3=keyboard hook/observer saw an event, 4=authorized ticket-path mapping was produced. Writes occur only on stage advances or sparse later events; they do not schedule or resend keyboard notifications. Partial writes are allowed to be rejected as unknown. The host reads at most 2048 bytes on its existing eligible publication path, never teardown, and validates types, bundle/version, finite integer PID/stage and <=120s timestamp. It logs stage transitions to the existing host log. No receipt means unobserved, not proof of absent injection, because directory views, protection and write/read failures remain possible. A receipt from a recently exited process is possible, so it is not liveness proof.
+
+The status file is strictly diagnostic: neither app nor host uses it for enabled/inner authorization, ticket replacement, Scene ownership or geometry. It never broadens the UIApplication injection filter, modifies loader settings or bypasses a user exclusion. There is no new input-bar layout algorithm in this build. Already verified height reconstruction is preserved, unsupported first-event sources still fall back, and remaining synchronization/other-app failures are explicitly unresolved pending process-specific evidence. A generic bottom input-bar detector or global inset rewrite is NOT introduced.
+
 ## Version 0.1.19: optional synchronous first-event evidence
 
 The 0.1.18 screenshot and app observer confirm the full-height placement works. The first app event at 816844601.872 still used reduced 210.33pt; successful host measurement was sampled at 601.888 and published at 601.940. The app next consumed it at 602.412, 0.540s after the first event. This identifies a measurement/consumption ordering gap, not proof of an incorrect animation duration. The native currentState rectangle is actually (0,0,430,320); it remains rejected rather than being relabeled as screen-docked 378pt.

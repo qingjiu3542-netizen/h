@@ -101,6 +101,7 @@ static void fvKDRecordMeasuredKeys(id host,Rect keys,Rect target,U version,doubl
  objc_setAssociatedObject(host,&fvKABMeasuredKey,data,1);
 }
 static void fvKABReport(const char*message){static unsigned budget=12;if(budget){budget--;trace(message);}}
+#include "FVKeyboardAppStatusHost.inc"
 static void fvKDPublishHost(id host){
  if(!fvGMain()||!enabled()||!host||objc_getAssociatedObject(host,&fvGLeavingKey)||objc_getAssociatedObject(host,&fvGFullscreenKey))return;
  id item=SEND(host,"superview"),window=SEND(host,"window"),scene=ivar(host,"appScene");
@@ -142,6 +143,7 @@ static void fvKDPublishHost(id host){
     ((BOOL(*)(id,SEL,id))objc_msgSend)(priorBundle,S("isEqualToString:"),bundle)&&now>=previous&&now-previous<2)return;
  const char *pathReason=0;id path=0;int cacheFD=fvKABOpenCaches(bundle,&pathReason,&path);
  if(cacheFD<0){char line[240];__builtin_snprintf(line,sizeof line,"KB app bridge skipped: %s",pathReason?pathReason:"app container unresolved");fvKABReport(line);return;}
+ fvKABReadAppStatus(host,cacheFD,bundle);
  id packet=SEND(objc_getClass("NSMutableDictionary"),"dictionary");
  fvGPut(packet,"scene",sceneName);fvGPut(packet,"bundleID",bundle);
  fvKABPutNumber(packet,"schema",2);fvKABPutNumber(packet,"enabled",1);

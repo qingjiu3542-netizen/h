@@ -50,6 +50,7 @@ static id readState(id bundle,const char **reason,int *missing){(void)bundle;(vo
 static int localTarget(id state,id event,FVKARect *source,FVKARect *target,const char **reason){(void)state;(void)event;(void)reason;*source=(FVKARect){0,0,430,932};*target=(FVKARect){0,0,430,430*16.0/9};return authorized;}
 static int liveTargetForScene(id e,id scene,FVKARect*s,FVKARect*t,const char**r){(void)e;(void)scene;(void)s;(void)t;(void)r;return 0;}
 static void reportOnce(unsigned key,const char *message){(void)key;(void)message;}
+static void writeAppStatus(unsigned stage){assert(stage>=1&&stage<=4);}
 static void report(const char *message){(void)message;}
 static void reportMapped(const char *message){(void)message;logCount++;}
 static void appLog(const char *message){(void)message;logCount++;}
