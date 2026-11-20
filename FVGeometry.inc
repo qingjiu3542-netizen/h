@@ -18,6 +18,7 @@ static void fvKDClearHostTicket(id host);
 #endif
 #ifdef FV_KEYBOARD_DOCK_EXPERIMENT
 static void fvKDDropForHost(id host);
+static void fvKDRestoreLayersForHost(id host);
 #endif
 #ifdef FV_COMPLETE_MODE
 static void fvFMRequestMount(id host,id child);
@@ -273,7 +274,11 @@ static void fvGApply(id h){
  int coverage=fvGWindowCoverage(p,pb);
  if(coverage<0){fvGDecision(7,"ratio 0.1.4: fullscreen coverage unavailable");goto retry;}
  if(coverage){
+  fvGDecision(20,"ratio: fullscreen coverage detected; restoring app Scene to native geometry");
 #ifdef FV_KEYBOARD_DOCK_EXPERIMENT
+  /* Revoke this Scene's app ticket asynchronously, after the full-screen
+   * layout callback unwinds; restore only still-owned keyboard-layer state
+   * synchronously. */
   fvKDDropForHost(h);
 #endif
   if(!state){

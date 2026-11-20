@@ -6,6 +6,7 @@ typedef struct{double x,y;} Point;typedef struct{double width,height;} Size;
 typedef struct{Point origin;Size size;} Rect;
 extern id objc_msgSend(id,SEL,...);
 extern Class objc_getClass(const char*);extern Class object_getClass(id);extern SEL sel_registerName(const char*);
+extern Class objc_allocateClassPair(Class,const char*,unsigned long);extern void objc_registerClassPair(Class);extern void objc_disposeClassPair(Class);
 extern Method class_getInstanceMethod(Class,SEL);extern IMP method_getImplementation(Method);
 extern const char *method_getTypeEncoding(Method);extern BOOL class_addMethod(Class,SEL,IMP,const char*);
 extern IMP class_replaceMethod(Class,SEL,IMP,const char*);
@@ -31,8 +32,11 @@ static double number(id o){return responds(o,"doubleValue")?((double(*)(id,SEL))
 static Rect rect(id o,const char*s){return ((Rect(*)(id,SEL))objc_msgSend)(o,S(s));}
 static FVKARect core(Rect r){return (FVKARect){r.origin.x,r.origin.y,r.size.width,r.size.height};}
 static IMP oldNamed,oldNote;
+static int eventKind(id name);
+static int readBox(id value,Rect *out);
 static _Thread_local unsigned forwarding;
-static unsigned reportBudget=16,reportOnceMask;
+static unsigned reportBudget=16,reportOnceMask,observedEventCount,rawFrameBudget=6,mappedReportBudget=4;
+static id eventProbeObserver;
 static void appLog(const char*s){
  id path=M1(NSHomeDirectory(),"stringByAppendingPathComponent:",text("Library/Caches/FVKeyboardApp.log"));
  const char *p=((const char*(*)(id,SEL))objc_msgSend)(path,S("UTF8String"));if(!p)return;
@@ -40,6 +44,32 @@ static void appLog(const char*s){
 }
 static void report(const char*s){if(reportBudget){reportBudget--;appLog(s);NSLog(text("[FVKeyboardApp] %s"),s);}}
 static void reportOnce(unsigned key,const char*s){unsigned bit=1u<<key;if(!(reportOnceMask&bit)){reportOnceMask|=bit;report(s);}}
+static void reportMapped(const char*s){if(mappedReportBudget){mappedReportBudget--;appLog(s);NSLog(text("[FVKeyboardApp] %s"),s);}}
+static void reportHookEntry(id name,id center,int namedRoute){
+ if(!eventKind(name))return;
+ id main=M0(objc_getClass("NSNotificationCenter"),"defaultCenter");
+ reportOnce(namedRoute?11:10,center==main?
+  (namedRoute?"keyboard notification entered named-post hook on default center":"keyboard notification entered object-post hook on default center"):
+  (namedRoute?"keyboard notification entered named-post hook on custom center":"keyboard notification entered object-post hook on custom center"));
+}
+static void keyboardObserved(id observer,SEL cmd,id note){
+ (void)observer;(void)cmd;id name=M0(note,"name");if(!eventKind(name))return;
+ unsigned index=__atomic_fetch_add(&observedEventCount,1,__ATOMIC_RELAXED);if(index>=8)return;
+ id info=M0(note,"userInfo"),object=M0(note,"object");Rect end;
+ if(readBox(get(info,"UIKeyboardFrameEndUserInfoKey"),&end)){
+  char line[256];snprintf(line,sizeof line,"UIKit keyboard notification observed n=%u route=observer objectIsScreen=%d local=%d frame=(%.2f,%.2f,%.2f,%.2f)",index+1,isKind(object,"UIScreen"),number(get(info,"UIKeyboardIsLocalUserInfoKey"))==1,end.origin.x,end.origin.y,end.size.width,end.size.height);report(line);
+ }else report("UIKit keyboard notification observed; end frame is not readable CGRect");
+}
+static void installObserver(id center){
+ if(eventProbeObserver)return;
+ Class c=objc_allocateClassPair(objc_getClass("NSObject"),"FVKeyboardAppEventProbeV2",0);
+ if(!c){report("keyboard event observer install failed: class allocation");return;}
+ if(!class_addMethod(c,S("keyboardObserved:"),(IMP)keyboardObserved,"v@:@")){objc_disposeClassPair(c);report("keyboard event observer install failed: selector registration");return;}
+ objc_registerClassPair(c);eventProbeObserver=((id(*)(id,SEL))objc_msgSend)(c,S("new"));if(!eventProbeObserver)return;
+ const char*names[]={"UIKeyboardWillShowNotification","UIKeyboardDidShowNotification","UIKeyboardWillChangeFrameNotification","UIKeyboardDidChangeFrameNotification"};
+ for(unsigned i=0;i<4;i++)((void(*)(id,SEL,id,SEL,id,id))objc_msgSend)(center,S("addObserver:selector:name:object:"),eventProbeObserver,S("keyboardObserved:"),text(names[i]),(id)0);
+ report("UIKit keyboard notification observer installed for frame diagnostics");
+}
 static int encoding(const char *actual,const char *expected){
  if(!actual)return 0;char out[128];unsigned n=0;int depth=0,quoted=0;
  for(;*actual;actual++){
@@ -146,6 +176,7 @@ static id mappedInfo(id name,id object,id userInfo){
  if(!localTarget(state,object,&source,&target,&guardReason)){reportOnce(8,guardReason?guardReason:"Scene/window/orientation/size/freshness guard failed");return 0;}
  Rect end;FVKARect mapped;
  if(!readBox(get(userInfo,"UIKeyboardFrameEndUserInfoKey"),&end)){reportOnce(6,"real keyboard event unchanged: end frame is not supported CGRect");return 0;}
+ if(rawFrameBudget){rawFrameBudget--;char line[240];snprintf(line,sizeof line,"native keyboard event end-frame=(%.2f,%.2f,%.2f,%.2f) objectScreen=%d local=%d",end.origin.x,end.origin.y,end.size.width,end.size.height,isKind(object,"UIScreen"),number(local)==1);report(line);}
  if(!fvKAFMap(source,target,core(end),&mapped)){reportOnce(7,"real keyboard event unchanged: end frame is not a full-width docked native-canvas keyboard");return 0;}
  id changed=M0(userInfo,"mutableCopy");if(!changed)return 0;
  Rect next={{mapped.x,mapped.y},{mapped.width,mapped.height}};
@@ -157,13 +188,14 @@ static id mappedInfo(id name,id object,id userInfo){
   box=((id(*)(id,SEL,Rect))objc_msgSend)(objc_getClass("NSValue"),S("valueWithCGRect:"),r);
   M2(changed,"setObject:forKey:",box,text("UIKeyboardFrameBeginUserInfoKey"));
  }
- if(reportBudget){
-  char line[256];snprintf(line,sizeof line,"real keyboard event mapped nativeTop=%.2f targetTop=%.2f height=%.2f; Scene matched; native timing preserved",end.origin.y,next.origin.y,next.size.height);
-  report(line);
+ if(mappedReportBudget){
+  char line[256];snprintf(line,sizeof line,"real keyboard event mapped source=(%.2f,%.2f,%.2f,%.2f) target=(%.2f,%.2f,%.2f,%.2f); native timing preserved",end.origin.x,end.origin.y,end.size.width,end.size.height,next.origin.x,next.origin.y,next.size.width,next.size.height);
+  reportMapped(line);
  }
  return changed; /* caller owns; all unrelated native keys are preserved */
 }
 static void namedHook(id center,SEL cmd,id name,id object,id info){
+ reportHookEntry(name,center,1);
  if(forwarding||center!=M0(objc_getClass("NSNotificationCenter"),"defaultCenter")){
   ((void(*)(id,SEL,id,id,id))oldNamed)(center,cmd,name,object,info);return;
  }
@@ -174,11 +206,12 @@ static void namedHook(id center,SEL cmd,id name,id object,id info){
  forwarding--;
 }
 static void noteHook(id center,SEL cmd,id note){
+ id name=M0(note,"name");reportHookEntry(name,center,0);
  if(forwarding||center!=M0(objc_getClass("NSNotificationCenter"),"defaultCenter")){
   ((void(*)(id,SEL,id))oldNote)(center,cmd,note);return;
  }
  forwarding++;
- id name=M0(note,"name"),object=M0(note,"object"),mapped=mappedInfo(name,object,M0(note,"userInfo"));
+ id object=M0(note,"object"),mapped=mappedInfo(name,object,M0(note,"userInfo"));
  id replacement=mapped?M3(objc_getClass("NSNotification"),"notificationWithName:object:userInfo:",name,object,mapped):0;
  ((void(*)(id,SEL,id))oldNote)(center,cmd,replacement?replacement:note);
  if(mapped)M0(mapped,"release");
@@ -197,6 +230,7 @@ static void install(void *unused){
  id defaultCenter=M0(objc_getClass("NSNotificationCenter"),"defaultCenter");
  if(!defaultCenter){report("adapter install failed: default notification center unavailable");return;}
  Class center=object_getClass(defaultCenter);if(!center){report("adapter install failed: notification-center class unavailable");return;}
+ installObserver(defaultCenter);
  Method a=class_getInstanceMethod(center,S("postNotificationName:object:userInfo:"));
  Method b=class_getInstanceMethod(center,S("postNotification:"));
  if(!a||!b){report("adapter install failed: notification posting selector unavailable");return;}

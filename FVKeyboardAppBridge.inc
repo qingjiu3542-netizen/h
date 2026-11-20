@@ -5,6 +5,7 @@ extern int fsync(int);extern int fchmod(int,unsigned short);extern long read(int
 #define FV_KAB_O_DIRECTORY 0x00100000
 #define FV_KAB_O_NOFOLLOW 0x00000100
 #define FV_KAB_O_CLOEXEC 0x01000000
+#define FV_KAB_O_NONBLOCK 0x00000004
 #define FV_KAB_DIR_FLAGS (FV_KAB_O_DIRECTORY|FV_KAB_O_NOFOLLOW|FV_KAB_O_CLOEXEC)
 #define FV_KAB_FILE_FLAGS (1|0x00000200|0x00000800|FV_KAB_O_NOFOLLOW|FV_KAB_O_CLOEXEC)
 static char fvKABSceneKey,fvKABStampKey,fvKABPathKey,fvKABBundleKey;
@@ -68,7 +69,7 @@ static BOOL fvKABAtomicWrite(int cacheFD,id packet){
  return ok;
 }
 static id fvKABReadTicket(int cacheFD){
- int fd=openat(cacheFD,"com.minis.floatingview.keyboard-layout.plist",0|FV_KAB_O_NOFOLLOW|FV_KAB_O_CLOEXEC);if(fd<0)return 0;
+ int fd=openat(cacheFD,"com.minis.floatingview.keyboard-layout.plist",FV_KAB_O_NONBLOCK|FV_KAB_O_NOFOLLOW|FV_KAB_O_CLOEXEC);if(fd<0)return 0;
  unsigned char bytes[8192];U length=0;BOOL ok=1;
  while(length<sizeof bytes){long n=read(fd,bytes+length,sizeof(bytes)-length);if(n<0){ok=0;break;}if(!n)break;length+=(U)n;}
  if(length==sizeof bytes)ok=0;close(fd);if(!ok||!length)return 0;
@@ -127,26 +128,36 @@ static void fvKDPublishHost(id host){
  }
  char line[240];__builtin_snprintf(line,sizeof line,ok?"KB app bridge: per-app Scene ticket published":"KB app bridge: per-app ticket atomic write failed");fvKABReport(line);
 }
+static void fvKABRevokeDeferred(void *context){
+ id work=context,path=fvGGet(context,"path"),bundle=fvGGet(context,"bundleID");
+ id expected=fvGGet(context,"scene"),expectedStamp=fvGGet(context,"stamp");
+ const char *why=0;id currentPath=0;int cacheFD=bundle?fvKABOpenCaches(bundle,&why,&currentPath):-1;
+ if(cacheFD>=0&&path&&currentPath&&((BOOL(*)(id,SEL,id))objc_msgSend)(path,S("isEqualToString:"),currentPath)){
+  id old=fvKABReadTicket(cacheFD),name=fvGGet(old,"scene"),actualBundle=fvGGet(old,"bundleID"),stamp=fvGGet(old,"stamp");
+  BOOL same=name&&actualBundle&&stamp&&((BOOL(*)(id,SEL,id))objc_msgSend)(expected,S("isEqualToString:"),name)&&
+   ((BOOL(*)(id,SEL,id))objc_msgSend)(bundle,S("isEqualToString:"),actualBundle)&&
+   ((double(*)(id,SEL))objc_msgSend)(stamp,S("doubleValue"))==((double(*)(id,SEL))objc_msgSend)(expectedStamp,S("doubleValue"));
+  if(same){
+   id revoked=SEND(old,"mutableCopy");fvKABPutNumber(revoked,"enabled",0);fvKABPutNumber(revoked,"stamp",CFAbsoluteTimeGetCurrent());
+   if(!fvKABAtomicWrite(cacheFD,revoked))fvKABReport("KB app bridge: per-app ticket revocation write failed");
+  }
+ }
+ if(cacheFD>=0)close(cacheFD);
+ if(work)SEND(work,"release");
+}
 static void fvKDClearHostTicket(id host){
  if(!fvGMain()||!host)return;
  id path=objc_getAssociatedObject(host,&fvKABPathKey);
- id expected=objc_getAssociatedObject(host,&fvKABSceneKey),expectedBundle=objc_getAssociatedObject(host,&fvKABBundleKey);
- id expectedStamp=objc_getAssociatedObject(host,&fvKABStampKey);
+ id expected=objc_getAssociatedObject(host,&fvKABSceneKey),bundle=objc_getAssociatedObject(host,&fvKABBundleKey);
+ id stamp=objc_getAssociatedObject(host,&fvKABStampKey);
+ id work=SEND(objc_getClass("NSMutableDictionary"),"dictionary");
+ if(path&&expected&&bundle&&stamp){
+  fvGPut(work,"path",path);fvGPut(work,"scene",expected);fvGPut(work,"bundleID",bundle);fvGPut(work,"stamp",stamp);
+ }
  objc_setAssociatedObject(host,&fvKABSceneKey,0,1);objc_setAssociatedObject(host,&fvKABBundleKey,0,1);
  objc_setAssociatedObject(host,&fvKABPathKey,0,1);objc_setAssociatedObject(host,&fvKABStampKey,0,1);
- if(!path||!expected||!expectedBundle||!expectedStamp)return;
- const char *why=0;id currentPath=0;int cacheFD=fvKABOpenCaches(expectedBundle,&why,&currentPath);
- if(cacheFD<0||!currentPath||!((BOOL(*)(id,SEL,id))objc_msgSend)(path,S("isEqualToString:"),currentPath)){
-  if(cacheFD>=0)close(cacheFD);fvKABReport("KB app bridge: ticket revoke skipped; app container identity changed");return;
+ if(path&&expected&&bundle&&stamp){
+  SEND(work,"retain");dispatch_async_f(&_dispatch_main_q,work,fvKABRevokeDeferred);
  }
- id old=fvKABReadTicket(cacheFD);
- id name=fvGGet(old,"scene"),bundle=fvGGet(old,"bundleID"),stamp=fvGGet(old,"stamp");
- BOOL same=name&&bundle&&stamp&&((BOOL(*)(id,SEL,id))objc_msgSend)(expected,S("isEqualToString:"),name)&&
-  ((BOOL(*)(id,SEL,id))objc_msgSend)(expectedBundle,S("isEqualToString:"),bundle)&&
-  ((double(*)(id,SEL))objc_msgSend)(stamp,S("doubleValue"))==((double(*)(id,SEL))objc_msgSend)(expectedStamp,S("doubleValue"));
- if(!same){close(cacheFD);return;}
- id revoked=SEND(old,"mutableCopy");fvKABPutNumber(revoked,"enabled",0);fvKABPutNumber(revoked,"stamp",CFAbsoluteTimeGetCurrent());
- BOOL ok=fvKABAtomicWrite(cacheFD,revoked);close(cacheFD);
- if(!ok)fvKABReport("KB app bridge: per-app ticket revocation write failed");
 }
 #endif

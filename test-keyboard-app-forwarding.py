@@ -15,6 +15,7 @@ static IMP oldNamed,oldNote;
 static int maps,releases,namedCalls,noteCalls,canMap,nest;
 static id delivered,deliveredNote;
 static void noteHook(id,SEL,id);
+static void reportHookEntry(id n,id c,int o){(void)n;(void)c;(void)o;}
 static id objc_getClass(const char *s){(void)s;return &cls;}
 static id m0(id o,const char *s){
  if(!strcmp(s,"defaultCenter"))return &center;
