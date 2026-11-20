@@ -12,5 +12,7 @@ for token in ('NSHomeDirectory()','Library','Caches','"bundleID"','mainBundleID(
  assert token in app,token
 assert '/var/mobile/Library/Preferences/com.minis.floatingview.keyboard-layout.plist' not in bridge
 assert '/var/mobile/Library/Preferences/com.minis.floatingview.keyboard-layout.plist' not in app
-assert 'dictionaryWithContentsOfFile:',app
+assert 'dictionaryWithContentsOfFile:' not in app
+assert 'propertyListWithData:options:format:error:' in app
+assert 'per-app ticket open failed errno=' in app
 print('PASS per-app ticket: LaunchServices container writer and matching app-cache reader, schema 2')

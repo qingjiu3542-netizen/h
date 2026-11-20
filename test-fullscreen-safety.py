@@ -1,5 +1,5 @@
 from pathlib import Path
-s=Path('/var/minis/workspace/floating-view-independent/FVKeyboardDock.inc').read_text()
+s=Path(__file__).with_name('FVKeyboardDock.inc').read_text()
 a=s.index('static void fvKDRestoreLayersForHost(');b=s.index('\n}\nstatic void fvKDDropForHost',a)
 restore=s[a:b]
 assert 'objectAtIndex:",i' in restore

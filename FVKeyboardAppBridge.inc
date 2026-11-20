@@ -126,7 +126,10 @@ static void fvKDPublishHost(id host){
   id stamp=((id(*)(id,SEL,double))objc_msgSend)(objc_getClass("NSNumber"),S("numberWithDouble:"),now);
   objc_setAssociatedObject(host,&fvKABStampKey,stamp,1);
  }
- char line[240];__builtin_snprintf(line,sizeof line,ok?"KB app bridge: per-app Scene ticket published":"KB app bridge: per-app ticket atomic write failed");fvKABReport(line);
+ char line[240];
+ if(ok)__builtin_snprintf(line,sizeof line,"KB app bridge: per-app Scene ticket published stamp=%.3f target=%.1fx%.1f",now,target.size.width,target.size.height);
+ else __builtin_snprintf(line,sizeof line,"KB app bridge: per-app ticket atomic write failed");
+ fvKABReport(line);
 }
 static void fvKABRevokeDeferred(void *context){
  id work=context,path=fvGGet(context,"path"),bundle=fvGGet(context,"bundleID");
