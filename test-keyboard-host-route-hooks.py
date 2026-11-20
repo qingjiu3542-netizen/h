@@ -2,7 +2,7 @@ from pathlib import Path
 import subprocess,tempfile
 R=Path(__file__).resolve().parent
 source=(R/'FVKeyboardHostRouteProbe.inc').read_text()
-for token in ('KHROUTE abi-fix-1','inputSetEmpty=%d','placeShowsKeyboard=%d','remoteFull=','KHREMOTE','keyboardScreenMatchesWindow','inputDestinationDidChange:withIAVHeight:isIAVRelevant:notifyRemote:forScene:','_didHandleKeyboardClientChange:shouldConsiderSnapshottingKeyboard:isLocalEvent:','queue_keyboardChangedWithCompletion:','inputDestinationDidChange:withIAVHeight:isIAVRelevant:notifyRemote:forScene:','_UIKeyboardArbiterClientSpringBoard','_UIKeyboardArbiterClientInputUIHost'):
+for token in ('KHROUTE abi-fix-1','inputSetEmpty=%d','placeShowsKeyboard=%d','remoteFull=','KHREMOTE','KHUIHOST','keyboardScreenMatchesWindow','keyboardVisibilityDidChangeWithFrame:visible:tracking:','inputDestinationDidChange:withIAVHeight:isIAVRelevant:notifyRemote:forScene:','_didHandleKeyboardClientChange:shouldConsiderSnapshottingKeyboard:isLocalEvent:','queue_keyboardChangedWithCompletion:','inputDestinationDidChange:withIAVHeight:isIAVRelevant:notifyRemote:forScene:','_UIKeyboardArbiterClientSpringBoard','_UIKeyboardArbiterClientInputUIHost'):
  assert token in source,token
 for forbidden in ('setCurrent','setFrame:','setBounds:','setPlacement:','setRequiredScene:','postNotification','object_setIvar','dispatch_after','dispatch_async','setObject:forKey:','updateSettings:'):
  assert forbidden not in source,forbidden
@@ -13,6 +13,7 @@ assert '"didHandleKeyboardChange:shouldConsiderSnapshottingKeyboard:isLocalEvent
 assert '"keyboardChanged:shouldConsiderSnapshottingKeyboard:isLocalEvent:"' not in source
 assert 'class_copyMethodList' in source
 subprocess.run(['python3',str(R/'test-keyboard-host-route-abi.py')],check=True)
+subprocess.run(['python3',str(R/'test-keyboard-host-route-uihost.py')],check=True)
 subprocess.run(['python3',str(R/'test-keyboard-host-route-iav.py')],check=True)
 subprocess.run(['python3',str(R/'test-keyboard-host-route-correlation.py')],check=True)
 subprocess.run(['python3',str(R/'test-host-route-log.py')],check=True)

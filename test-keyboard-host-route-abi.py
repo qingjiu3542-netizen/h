@@ -41,13 +41,14 @@ static IMP method_getImplementation(Method m){return ((Entry*)m)->imp;}
 static Method *class_copyMethodList(Class c,unsigned *out){Method *a=malloc(n*sizeof *a);*out=0;for(unsigned i=0;i<n;i++)if(entries[i].owner==(int)(size_t)c)a[(*out)++]=&entries[i];return a;}
 static IMP class_replaceMethod(Class c,SEL s,IMP value,const char *types){Entry *e=class_getInstanceMethod(c,s);assert(e&&e->owner==(int)(size_t)c&&!strcmp(e->types,types));IMP old=e->imp;e->imp=value;changes++;return old;}
 static void fvKHLog(const char *s){if(strstr(s,"mismatch"))rejects++;}
-static IMP fvKHShowOriginal,fvKHArbiterOriginal,fvKHPrepareOriginal,fvKHRemoteChangedOriginal,fvKHIAVHeightOriginal;
+static IMP fvKHShowOriginal,fvKHArbiterOriginal,fvKHPrepareOriginal,fvKHRemoteChangedOriginal,fvKHIAVHeightOriginal,fvKHUIHostVisibilityOriginal;
 static IMP fvKHSignalImp[5],fvKHQueueImp[5],fvKHQueueWithCompletionImp[5],fvKHDidHandleImp[5];
 #define fvKHShow replacement
 #define fvKHArbiter replacement
 #define fvKHPrepare replacement
 #define fvKHRemoteChanged replacement
 #define fvKHIAVHook replacement
+#define fvKHUIHostVisibility replacement
 static IMP fvKHSignalWrappers[5]={replacement,replacement,replacement,replacement,replacement};
 static IMP fvKHQueueWrappers[5]={replacement,replacement,replacement,replacement,replacement};
 static IMP fvKHQueueCompletionWrappers[5]={replacement,replacement,replacement,replacement,replacement};
@@ -68,17 +69,18 @@ int main(void){
  add(5,"_didHandleKeyboardClientChange:shouldConsiderSnapshottingKeyboard:isLocalEvent:","B@:@BB",5);
  add(6,"didHandleKeyboardChange:shouldConsiderSnapshottingKeyboard:isLocalEvent:","B@:@BB",5);
  add(5,"inputDestinationDidChange:withIAVHeight:isIAVRelevant:notifyRemote:forScene:","v@:BdBB@",7);
- fvKHInstall();assert(changes==10);
+ add(4,"keyboardVisibilityDidChangeWithFrame:visible:tracking:","v@:{CGRect={CGPoint=dd}{CGSize=dd}}BB",5);
+ fvKHInstall();assert(changes==11);
  assert(fvKHRemoteChangedOriginal==original&&fvKHDidHandleImp[0]==original&&fvKHDidHandleImp[3]==original);
  assert(!fvKHDidHandleImp[1]&&!fvKHDidHandleImp[2]);
- fvKHInstall();assert(changes==10); /* idempotent: never save our own wrapper */
+ fvKHInstall();assert(changes==11); /* idempotent: never save our own wrapper */
  IMP slot=0;
  assert(!fvKHHook(classNames[5],"didHandleKeyboardChange:shouldConsiderSnapshottingKeyboard:isLocalEvent:","B@:@@BB",replacement,&slot)&&!slot);
  entries[8].argc=6;
  assert(!fvKHHook(classNames[5],entries[8].selector,"B@:@BB",replacement,&slot)&&!slot);
  entries[8].argc=5;entries[8].types="c@:@cc";
  assert(!fvKHHook(classNames[5],entries[8].selector,"B@:@BB",replacement,&slot)&&!slot);
- assert(rejects==3&&changes==10);return 0;
+ assert(rejects==3&&changes==11);return 0;
 }
 '''
 # Include path is absolute to keep temporary compilation independent of cwd.

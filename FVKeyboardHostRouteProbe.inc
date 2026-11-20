@@ -30,7 +30,8 @@ static id fvKHHosts;
 static volatile unsigned fvKHCurrentMode;
 static unsigned fvKHActiveCounts[10][2],fvKHOtherCounts[10][2],fvKHMissingBudget=5,fvKHSequence;
 static _Thread_local unsigned fvKHDepth;
-static IMP fvKHShowOriginal,fvKHArbiterOriginal,fvKHPrepareOriginal,fvKHRemoteChangedOriginal,fvKHIAVHeightOriginal;
+static IMP fvKHShowOriginal,fvKHArbiterOriginal,fvKHPrepareOriginal,fvKHRemoteChangedOriginal,fvKHIAVHeightOriginal,fvKHUIHostVisibilityOriginal;
+static unsigned fvKHUIHostCounts[2][2],fvKHUIHostSequence;
 static int fvKHABI(id object,const char *selector,const char *expected){
  if(!object)return 0;
  Method method=class_getInstanceMethod(object_getClass(object),S(selector));
@@ -199,6 +200,19 @@ static FVKHBool fvKHRemoteChanged(id self,SEL cmd,id information,FVKHBool snapsh
  if(!(scope.previous&(1u<<6)))fvKHRecord(6,self,(fvGMain()?fvKHObject(self,"requiredScene"):0),(Rect){{0,0},{0,0}},(Rect){{0,0},{0,0}},snapshot,local,-1,information,0,0);
  return ((FVKHBool(*)(id,SEL,id,FVKHBool,FVKHBool))fvKHRemoteChangedOriginal)(self,cmd,information,snapshot,local);
 }
+static void fvKHUIHostVisibility(id self,SEL cmd,Rect frame,FVKHBool visible,FVKHBool tracking){
+ FVKHScope scope __attribute__((cleanup(fvKHClose)))={fvKHDepth};fvKHDepth|=1u<<10;
+ if(!(scope.previous&(1u<<10))){
+  int main=fvGMain();unsigned mode=main?(enabled()?1u:0u):__atomic_load_n(&fvKHCurrentMode,__ATOMIC_RELAXED);
+  int active=visible||frame.size.width>0||frame.size.height>0;
+  if(fvKHTake(&fvKHUIHostCounts[mode][active?1:0],active?12u:4u)){
+   unsigned seq=__atomic_add_fetch(&fvKHUIHostSequence,1u,__ATOMIC_RELAXED);
+   const char *name=self?class_getName(object_getClass(self)):"nil";char line[420];
+   snprintf(line,sizeof line,"KHUIHOST seq=%u pid=%d stamp=%.6f mode=%s receiver=%.100s main=%d frame=(%.3f,%.3f,%.3f,%.3f) visible=%d tracking=%d; read-only InputUIHost callback, not app-layout proof",seq,getpid(),CFAbsoluteTimeGetCurrent(),mode?"ratio9x16":"native",name?name:"unknown",main,frame.origin.x,frame.origin.y,frame.size.width,frame.size.height,visible,tracking);fvKHLog(line);
+  }
+ }
+ ((void(*)(id,SEL,Rect,FVKHBool,FVKHBool))fvKHUIHostVisibilityOriginal)(self,cmd,frame,visible,tracking);
+}
 static void fvKHIAVHook(id self,SEL cmd,FVKHBool destination,double height,FVKHBool relevant,FVKHBool notify,id scene){
  FVKHScope scope __attribute__((cleanup(fvKHClose)))={fvKHDepth};fvKHDepth|=1u<<9;
  if(!(scope.previous&(1u<<9))){
@@ -250,7 +264,8 @@ static void fvKHInstall(void){
  /* iOS 16 header: bool return, ONE object and TWO bool arguments. */
  if(fvKHHook("_UIRemoteKeyboards","didHandleKeyboardChange:shouldConsiderSnapshottingKeyboard:isLocalEvent:","B@:@BB",(IMP)fvKHRemoteChanged,&fvKHRemoteChangedOriginal))installed|=64;
  if(fvKHHook("_UIKeyboardArbiterClientInputDestination","inputDestinationDidChange:withIAVHeight:isIAVRelevant:notifyRemote:forScene:","v@:BdBB@",(IMP)fvKHIAVHook,&fvKHIAVHeightOriginal))installed|=256;
- char line[360];snprintf(line,sizeof line,"KHROUTE abi-fix-1 installedMask=%u show=%u updateArbiter=%u prepareScene=%u signal=%u queueState=%u arbiterChange=%u remoteChange=%u queueCompletion=%u iavHeight=%u; installation only, not proof of delivery or avoidance",installed,!!(installed&1),!!(installed&2),!!(installed&4),!!(installed&8),!!(installed&16),!!(installed&32),!!(installed&64),!!(installed&128),!!(installed&256));fvKHLog(line);
+ if(fvKHHook("_UIKeyboardArbiterClientInputUIHost","keyboardVisibilityDidChangeWithFrame:visible:tracking:","v@:{CGRect={CGPoint=dd}{CGSize=dd}}BB",(IMP)fvKHUIHostVisibility,&fvKHUIHostVisibilityOriginal))installed|=512;
+ char line[420];snprintf(line,sizeof line,"KHROUTE abi-fix-1 installedMask=%u show=%u updateArbiter=%u prepareScene=%u signal=%u queueState=%u arbiterChange=%u remoteChange=%u queueCompletion=%u iavHeight=%u uiHostVisibility=%u; installation only, not proof of delivery or avoidance",installed,!!(installed&1),!!(installed&2),!!(installed&4),!!(installed&8),!!(installed&16),!!(installed&32),!!(installed&64),!!(installed&128),!!(installed&256),!!(installed&512));fvKHLog(line);
 }
 #endif
 
