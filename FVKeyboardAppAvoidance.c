@@ -33,7 +33,6 @@ static FVKARect core(Rect r){return (FVKARect){r.origin.x,r.origin.y,r.size.widt
 static IMP oldNamed,oldNote;
 static _Thread_local unsigned forwarding;
 static unsigned reportBudget=16,reportOnceMask;
-static const char *statePath="/var/mobile/Library/Preferences/com.minis.floatingview.keyboard-layout.plist";
 static void appLog(const char*s){
  id path=M1(NSHomeDirectory(),"stringByAppendingPathComponent:",text("Library/Caches/FVKeyboardApp.log"));
  const char *p=((const char*(*)(id,SEL))objc_msgSend)(path,S("UTF8String"));if(!p)return;
@@ -56,17 +55,32 @@ static int eventKind(id name){
     equal(name,text("UIKeyboardWillChangeFrameNotification"))||equal(name,text("UIKeyboardDidChangeFrameNotification")))return 1;
  return 0;
 }
-static id readState(const char **reason){
- id p=M1(objc_getClass("NSDictionary"),"dictionaryWithContentsOfFile:",text(statePath));
- if(!isKind(p,"NSDictionary")){if(reason)*reason="Scene ticket missing, unreadable, or not a dictionary";return 0;}
- id schema=get(p,"schema"),enabledValue=get(p,"enabled"),scene=get(p,"scene");
- if(!isKind(schema,"NSNumber")||!isKind(enabledValue,"NSNumber")||!isKind(scene,"NSString")){
-  if(reason)*reason="Scene ticket schema, enabled flag, or Scene identifier missing/invalid";return 0;
+static id appCachePath(const char **reason){
+ id home=NSHomeDirectory();if(!home||!responds(home,"stringByAppendingPathComponent:")){if(reason)*reason="application home directory unavailable";return 0;}
+ id library=M1(home,"stringByAppendingPathComponent:",text("Library"));
+ id caches=M1(library,"stringByAppendingPathComponent:",text("Caches"));
+ id path=M1(caches,"stringByAppendingPathComponent:",text("com.minis.floatingview.keyboard-layout.plist"));
+ if(reason)*reason="resolved";return path;
+}
+static id mainBundleID(void){
+ id bundle=M0(objc_getClass("NSBundle"),"mainBundle");
+ id identifier=bundle&&responds(bundle,"bundleIdentifier")?M0(bundle,"bundleIdentifier"):0;
+ return isKind(identifier,"NSString")?identifier:0;
+}
+static id readState(id appBundle,const char **reason){
+ id path=appCachePath(reason);if(!path)return 0;
+ id p=M1(objc_getClass("NSDictionary"),"dictionaryWithContentsOfFile:",path);
+ if(!isKind(p,"NSDictionary")){if(reason)*reason="per-app Scene ticket missing or unreadable";return 0;}
+ id schema=get(p,"schema"),enabledValue=get(p,"enabled"),scene=get(p,"scene"),bundle=get(p,"bundleID");
+ if(!isKind(schema,"NSNumber")||!isKind(enabledValue,"NSNumber")||!isKind(scene,"NSString")||!isKind(bundle,"NSString")){
+  if(reason)*reason="per-app ticket schema/identity fields missing or invalid";return 0;
  }
- if(number(schema)!=1||number(enabledValue)!=1){if(reason)*reason="Scene ticket schema unsupported or disabled";return 0;}
+ if(number(schema)!=2){if(reason)*reason="per-app ticket schema version mismatch";return 0;}
+ if(!appBundle||!equal(bundle,appBundle)){if(reason)*reason="per-app ticket bundle identifier mismatch";return 0;}
+ if(number(enabledValue)!=1){if(reason)*reason="per-app Scene ticket is explicitly disabled";return 0;}
  const char *keys[]={"stamp","inner","targetX","targetY","targetWidth","targetHeight","sourceX","sourceY","sourceWidth","sourceHeight"};
  for(unsigned i=0;i<sizeof(keys)/sizeof(keys[0]);i++){
-  id v=get(p,keys[i]);if(!isKind(v,"NSNumber")||!__builtin_isfinite(number(v))){if(reason)*reason="Scene ticket contains missing or nonnumeric geometry field";return 0;}
+  id v=get(p,keys[i]);if(!isKind(v,"NSNumber")||!__builtin_isfinite(number(v))){if(reason)*reason="per-app ticket contains missing or nonnumeric geometry field";return 0;}
  }
  return p;
 }
@@ -125,8 +139,9 @@ static id mappedInfo(id name,id object,id userInfo){
  if(object&&!isKind(object,"UIScreen")){reportOnce(1,"real keyboard event unchanged: notification object is neither nil nor UIScreen");return 0;}
  id local=get(userInfo,"UIKeyboardIsLocalUserInfoKey");if(!local||number(local)!=1){reportOnce(2,"real keyboard event unchanged: local-keyboard marker missing or false");return 0;}
  if(!((BOOL(*)(id,SEL))objc_msgSend)(objc_getClass("NSThread"),S("isMainThread"))){reportOnce(3,"real keyboard event unchanged: notification is not on main thread");return 0;}
- const char *ticketReason=0;id state=readState(&ticketReason);FVKARect source,target;
- if(!state){reportOnce(4,ticketReason?ticketReason:"Scene ticket not authorized");return 0;}
+ id appBundle=mainBundleID();if(!appBundle){reportOnce(9,"application bundle identifier unavailable");return 0;}
+ const char *ticketReason=0;id state=readState(appBundle,&ticketReason);FVKARect source,target;
+ if(!state){reportOnce(4,ticketReason?ticketReason:"per-app Scene ticket not authorized");return 0;}
  const char *guardReason=0;
  if(!localTarget(state,object,&source,&target,&guardReason)){reportOnce(8,guardReason?guardReason:"Scene/window/orientation/size/freshness guard failed");return 0;}
  Rect end;FVKARect mapped;
@@ -189,6 +204,6 @@ static void install(void *unused){
  int namedOK=hook(center,"postNotificationName:object:userInfo:","v@:@@@",(IMP)namedHook,&oldNamed);
  int noteOK=hook(center,"postNotification:","v@:@",(IMP)noteHook,&oldNote);
  if(!namedOK||!noteOK){report("adapter install failed: notification hook registration failed");return;}
- report("portrait real-event adapter installed; exact Scene ticket required; landscape unchanged");
+ report("portrait adapter installed; per-app Caches ticket schema 2; exact Scene/screen required; landscape unchanged");
 }
 __attribute__((constructor))static void start(void){dispatch_async_f(&_dispatch_main_q,0,install);}
