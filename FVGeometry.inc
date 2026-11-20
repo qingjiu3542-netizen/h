@@ -12,6 +12,10 @@ static void fvGRequest(id o);
 static void fvKARefresh(void);
 static void fvKAObserveItem(id item);
 static void fvKADetach(id item);
+#ifdef FV_KEYBOARD_HOST_ROUTE_PROBE
+static void fvKHObserveHost(id host);
+static void fvKHInstall(void);
+#endif
 #ifdef FV_KEYBOARD_APP_AVOIDANCE_BRIDGE
 static void fvKDPublishHost(id host);
 static void fvKDRecordMeasuredKeys(id host,Rect keys,Rect target,U version,double stamp);
@@ -216,6 +220,9 @@ static void fvGPAssign(void *v,unsigned field){
 }
 static void fvGApply(id h){
  if(!fvGMain()||objc_getAssociatedObject(h,&fvGBusyKey))return;
+#ifdef FV_KEYBOARD_HOST_ROUTE_PROBE
+ fvKHObserveHost(h);
+#endif
  id p=SEND(h,"superview"),scene=ivar(h,"appScene"),r=ivar(h,"hostingView"),cached=ivar(h,"appSetting");
  id state=objc_getAssociatedObject(h,&fvGStateKey),settings=0;
  int active=enabled();
@@ -457,6 +464,7 @@ static BOOL fvGCanHook(Class c){
 #include "FVKeyboardGeometryProbe.inc"
 #include "FVKeyboardAppBridge.inc"
 #include "FVLifecycle.inc"
+#include "FVKeyboardHostRouteProbe.inc"
 static void fvKAItemWindowHook(id self,SEL cmd){
  fvGItemWindowHook(self,cmd);
  if(SEND(self,"window")){fvKAObserveItem(self);fvKARefresh();}
@@ -508,6 +516,9 @@ static void install(void *unused){
  fvKAInstall(fvGItemClass);
 #ifdef FV_KEYBOARD_GEOMETRY_PROBE
  fvKGPInstall();
+#endif
+#ifdef FV_KEYBOARD_HOST_ROUTE_PROBE
+ fvKHInstall();
 #endif
  fvGInstalled=1;
  trace("geometry hooks installed with bounded native restoration");
