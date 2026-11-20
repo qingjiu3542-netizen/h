@@ -19,6 +19,17 @@ int main(void){
  assert(!fvKAFMap(src,target,(FVKARect){0,554,430,378},0));n++;
  assert(!fvKAFMap((FVKARect){0,0,932,430},target,(FVKARect){0,230,932,200},&out));n++;
  double now=817000000;
+ FVKARect liveSource={0,0,430,932},liveTarget={0,0,430,764.4444444444};
+ assert(fvKAFLiveViewportAllowed(1,1,1,1,liveSource,liveTarget));n++;
+ assert(!fvKAFLiveViewportAllowed(0,1,1,1,liveSource,liveTarget));n++;
+ assert(!fvKAFLiveViewportAllowed(1,0,1,1,liveSource,liveTarget));n++;
+ assert(!fvKAFLiveViewportAllowed(1,1,0,1,liveSource,liveTarget));n++;
+ assert(!fvKAFLiveViewportAllowed(1,1,1,0,liveSource,liveTarget));n++;
+ assert(!fvKAFLiveViewportAllowed(1,1,1,1,liveSource,liveSource));n++;
+ FVKARect wrongTarget=liveTarget;wrongTarget.height=700;
+ assert(!fvKAFLiveViewportAllowed(1,1,1,1,liveSource,wrongTarget));n++;
+ wrongTarget=liveTarget;wrongTarget.x=5;
+ assert(!fvKAFLiveViewportAllowed(1,1,1,1,liveSource,wrongTarget));n++;
  assert(fvKAFAuthorize(1,1,1,1,1,now,now-5,target,target));n++;
  for(int field=0;field<5;field++){
   int flags[5]={1,1,1,1,1};flags[field]=0;

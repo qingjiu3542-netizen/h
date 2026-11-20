@@ -9,6 +9,13 @@ static inline int fvKAFEventScreenMatch(int hasObject,int objectIsScreen,int sam
  return !hasObject||(objectIsScreen==1&&sameScreen==1);
 }
 static inline int fvKAFNear(double a,double b){return __builtin_fabs(a-b)<0.6;}
+static inline int fvKAFLiveViewportAllowed(int uniqueForegroundScene,int eventScreenMatches,
+ int portrait,int uniqueVisibleKeyWindow,FVKARect source,FVKARect target){
+ return uniqueForegroundScene==1&&eventScreenMatches==1&&portrait==1&&uniqueVisibleKeyWindow==1&&
+  fvKAFRect(source)&&fvKAFRect(target)&&fvKAFNear(source.x,0)&&fvKAFNear(source.y,0)&&
+  fvKAFNear(target.x,0)&&fvKAFNear(target.y,0)&&fvKAFNear(source.width,target.width)&&
+  source.height>target.height+0.6&&fvKAFNear(target.height,target.width*16.0/9.0);
+}
 static inline int fvKAFAuthorize(int sameScene,int foreground,int keyWindow,int portrait,int inner,
  double now,double stamp,FVKARect local,FVKARect target){
  return sameScene==1&&foreground==1&&keyWindow==1&&portrait==1&&inner==1&&fvKAFRect(local)&&fvKAFRect(target)&&

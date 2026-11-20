@@ -127,6 +127,22 @@ static id readState(id appBundle,const char **reason){
  if(reason)*reason="ticket read and parsed";return p;
 }
 
+static int liveTarget(id eventObject,FVKARect *native,FVKARect *target,const char **reason){
+#define LIVEFAIL(message) do{if(reason)*reason=message;return 0;}while(0)
+ id app=M0(objc_getClass("UIApplication"),"sharedApplication");if(!responds(app,"connectedScenes"))LIVEFAIL("live geometry unavailable: no connectedScenes");
+ id set=M0(app,"connectedScenes"),scenes=set?M0(set,"allObjects"):0;U n=scenes?(U)M0(scenes,"count"):0;id chosen=0,win=0;unsigned active=0;
+ for(U i=0;i<n;i++){id s=((id(*)(id,SEL,U))objc_msgSend)(scenes,S("objectAtIndex:"),i);if(!isKind(s,"UIWindowScene")||!responds(s,"activationState"))continue;if(((long(*)(id,SEL))objc_msgSend)(s,S("activationState"))!=0)continue;active++;chosen=s;}
+ if(active!=1||!chosen||!responds(chosen,"screen")||!responds(chosen,"interfaceOrientation"))LIVEFAIL("live geometry foreground Scene is not unique");
+ id screen=M0(chosen,"screen");if(!screen||!fvKAFEventScreenMatch(eventObject!=0,eventObject&&isKind(eventObject,"UIScreen"),eventObject==screen))LIVEFAIL("live geometry screen mismatch");
+ if(((long(*)(id,SEL))objc_msgSend)(chosen,S("interfaceOrientation"))!=1)LIVEFAIL("live geometry is not portrait");
+ id windows=M0(chosen,"windows");if(!windows)LIVEFAIL("live geometry has no windows");n=(U)M0(windows,"count");
+ for(U i=0;i<n;i++){id w=((id(*)(id,SEL,U))objc_msgSend)(windows,S("objectAtIndex:"),i);if(((BOOL(*)(id,SEL))objc_msgSend)(w,S("isKeyWindow"))&&!((BOOL(*)(id,SEL))objc_msgSend)(w,S("isHidden"))){if(win)LIVEFAIL("live geometry has multiple key windows");win=w;}}
+ if(!win)LIVEFAIL("live geometry has no visible key window");
+ FVKARect t=core(rect(win,"bounds")),s=core(rect(screen,"bounds"));
+ if(!fvKAFLiveViewportAllowed(active==1,eventObject==0||eventObject==screen,1,1,s,t))LIVEFAIL("live geometry is not an exact portrait 9:16 viewport");
+ *native=s;*target=t;if(reason)*reason="authorized from live Scene/window bounds";return 1;
+#undef LIVEFAIL
+}
 static int localTarget(id state,id eventObject,FVKARect *native,FVKARect *target,const char **reason){
 #define FAIL(message) do{if(reason)*reason=message;return 0;}while(0)
  id app=M0(objc_getClass("UIApplication"),"sharedApplication");
@@ -183,13 +199,28 @@ static id mappedInfo(id name,id object,id userInfo){
  id local=get(userInfo,"UIKeyboardIsLocalUserInfoKey");if(!local||number(local)!=1){reportOnce(2,"real keyboard event unchanged: local-keyboard marker missing or false");return 0;}
  if(!((BOOL(*)(id,SEL))objc_msgSend)(objc_getClass("NSThread"),S("isMainThread"))){reportOnce(3,"real keyboard event unchanged: notification is not on main thread");return 0;}
  id appBundle=mainBundleID();if(!appBundle){reportOnce(9,"application bundle identifier unavailable");return 0;}
- const char *ticketReason=0;id state=readState(appBundle,&ticketReason);FVKARect source,target;
- if(!state){reportOnce(4,ticketReason?ticketReason:"per-app Scene ticket not authorized");return 0;}
- const char *guardReason=0;
- if(!localTarget(state,object,&source,&target,&guardReason)){reportOnce(8,guardReason?guardReason:"Scene/window/orientation/size/freshness guard failed");return 0;}
- Rect end;FVKARect mapped;
+ const char *ticketReason=0;id state=readState(appBundle,&ticketReason);FVKARect source,target;Rect end;FVKARect mapped;
  if(!readBox(get(userInfo,"UIKeyboardFrameEndUserInfoKey"),&end)){reportOnce(6,"real keyboard event unchanged: end frame is not supported CGRect");return 0;}
  if(rawFrameBudget){rawFrameBudget--;char line[240];snprintf(line,sizeof line,"native keyboard event end-frame=(%.2f,%.2f,%.2f,%.2f) objectScreen=%d local=%d",end.origin.x,end.origin.y,end.size.width,end.size.height,isKind(object,"UIScreen"),number(local)==1);report(line);}
+ if(!state){
+  const char *liveReason=0;FVKARect liveSource,liveRect;
+  if(!liveTarget(object,&liveSource,&liveRect,&liveReason)){reportOnce(16,liveReason?liveReason:"per-app ticket unavailable and live geometry rejected");return 0;}
+  if(!fvKAFMap(liveSource,liveRect,core(end),&mapped))return 0;
+  id changed=M0(userInfo,"mutableCopy");if(!changed)return 0;
+  Rect next={{mapped.x,mapped.y},{mapped.width,mapped.height}};
+  id box=((id(*)(id,SEL,Rect))objc_msgSend)(objc_getClass("NSValue"),S("valueWithCGRect:"),next);
+  M2(changed,"setObject:forKey:",box,text("UIKeyboardFrameEndUserInfoKey"));
+  Rect begin;FVKARect mappedBegin;
+  if(readBox(get(userInfo,"UIKeyboardFrameBeginUserInfoKey"),&begin)&&fvKAFMapBegin(liveSource,liveRect,core(begin),&mappedBegin)){
+   Rect r={{mappedBegin.x,mappedBegin.y},{mappedBegin.width,mappedBegin.height}};
+   box=((id(*)(id,SEL,Rect))objc_msgSend)(objc_getClass("NSValue"),S("valueWithCGRect:"),r);
+   M2(changed,"setObject:forKey:",box,text("UIKeyboardFrameBeginUserInfoKey"));
+  }
+  if(mappedReportBudget){char line[256];snprintf(line,sizeof line,"real keyboard event mapped live-geometry source=(%.2f,%.2f,%.2f,%.2f) target=(%.2f,%.2f,%.2f,%.2f)",end.origin.x,end.origin.y,end.size.width,end.size.height,next.origin.x,next.origin.y,next.size.width,next.size.height);reportMapped(line);}
+  return changed;
+ }
+ const char *guardReason=0;
+ if(!localTarget(state,object,&source,&target,&guardReason)){reportOnce(8,guardReason?guardReason:"Scene/window/orientation/size/freshness guard failed");return 0;}
  if(!fvKAFMap(source,target,core(end),&mapped)){reportOnce(7,"real keyboard event unchanged: end frame is not a full-width docked native-canvas keyboard");return 0;}
  id changed=M0(userInfo,"mutableCopy");if(!changed)return 0;
  Rect next={{mapped.x,mapped.y},{mapped.width,mapped.height}};
