@@ -24,6 +24,7 @@ run('python3',R/'test-keyboard-first-event-hooks.py')
 run('python3',R/'test-keyboard-app-status.py')
 run('python3',R/'test-keyboard-host-route-hooks.py')
 run('python3',R/'test-keyboard-host-route-uihost.py')
+run('python3',R/'test-keyboard-host-route-segments.py')
 run('python3',R/'test-fullscreen-safety.py')
 summary=[]
 for mode in ('baseline','probe','first-mount','keyboard-experiment','keyboard-geometry-probe','keyboard-dock-experiment','portrait-avoidance-experiment','keyboard-app-avoidance','host-route-probe'):

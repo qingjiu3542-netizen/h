@@ -28,7 +28,14 @@ static void fvKHCorrelation(unsigned seq,unsigned kind,int isMain,unsigned mode,
 }
 static id fvKHHosts;
 static volatile unsigned fvKHCurrentMode;
-static unsigned fvKHActiveCounts[10][2],fvKHOtherCounts[10][2],fvKHMissingBudget=5,fvKHSequence;
+/* Session means this process's observed hide/show segment, never an app session.
+ * Mode is only a preference snapshot; it does not participate in phase changes.
+ * Six show segments plus pre-show bucket, and 512 detailed records for the
+ * whole process. Neither limit nor any spent bucket can ever be reset. */
+static unsigned fvKHActiveCounts[7][10][2],fvKHOtherCounts[7][10][2],fvKHMissingBudget=5,fvKHSequence;
+static unsigned fvKHSession,fvKHSegmentsClosed,fvKHSessionLimitNoted,fvKHDetailTotal;
+static int fvKHObservedPhase=-1;
+static double fvKHStartedAt;
 static _Thread_local unsigned fvKHDepth;
 static IMP fvKHShowOriginal,fvKHArbiterOriginal,fvKHPrepareOriginal,fvKHRemoteChangedOriginal,fvKHIAVHeightOriginal,fvKHUIHostVisibilityOriginal;
 static unsigned fvKHUIHostCounts[2][2],fvKHUIHostSequence;
@@ -64,8 +71,81 @@ static unsigned fvKHSceneHash(id scene){
 }
 static int fvKHTake(unsigned *slot,unsigned cap){
  unsigned old=__atomic_load_n(slot,__ATOMIC_RELAXED);
- while(old<cap){if(__atomic_compare_exchange_n(slot,&old,old+1,0,__ATOMIC_RELAXED,__ATOMIC_RELAXED))return 1;}
+ while(old<=cap){
+  if(__atomic_compare_exchange_n(slot,&old,old+1,0,__ATOMIC_RELAXED,__ATOMIC_RELAXED)){
+   if(old<cap)return 1;
+   char line[260];snprintf(line,sizeof line,"KHQUOTA exhausted scope=fixed-process-%s cap=%u budgetToken=%016llx pid=%d; first denied sample, later silence is not absence of callbacks",cap==16?"iav-arguments":"uihost-visibility",cap,fvKHToken((id)slot),getpid());fvKHLog(line);break;
+  }
+ }
  return 0;
+}
+/* Named budgets have one immutable spent sentinel, not an unlimited reset. */
+static int fvKHQuota(unsigned *slot,unsigned cap,const char *scope,unsigned route,unsigned mode,unsigned session){
+ unsigned old=__atomic_load_n(slot,__ATOMIC_RELAXED);
+ while(old<=cap){
+  if(__atomic_compare_exchange_n(slot,&old,old+1,0,__ATOMIC_RELAXED,__ATOMIC_RELAXED)){
+   if(old<cap)return 1;
+   char line[320];snprintf(line,sizeof line,"KHQUOTA exhausted scope=%s route=%u modeSnapshot=%u session=%u cap=%u pid=%d; first denied sample, silence is not callback absence",scope,route,mode,session,cap,getpid());fvKHLog(line);break;
+  }
+ }
+ return 0;
+}
+static void fvKHObservePhase(int phase,unsigned route,const char *evidence){
+ if(phase<0||fvKHSegmentsClosed||phase==fvKHObservedPhase)return;
+ if(!fvKHStartedAt)fvKHStartedAt=CFAbsoluteTimeGetCurrent();
+ int previous=fvKHObservedPhase;fvKHObservedPhase=phase;
+ if(phase==1){
+  if(fvKHSession>=6){
+   fvKHSegmentsClosed=1;
+   if(!fvKHSessionLimitNoted){fvKHSessionLimitNoted=1;fvKHLog("KHQUOTA exhausted scope=show-segments cap=6; permanently closed, no resets, process observation only");}
+   return;
+  }
+  fvKHSession++;
+ }
+ char line[420];double now=CFAbsoluteTimeGetCurrent();
+ snprintf(line,sizeof line,"KHSESSION pid=%d stamp=%.6f elapsed=%.6f session=%u previous=%d phase=%s route=%u evidence=%s; process-observed-segment, not-target-session-or-authorization, mode-is-not-phase",getpid(),now,now-fvKHStartedAt,fvKHSession,previous,phase?"show":"hide",route,evidence);fvKHLog(line);
+}
+/* Only original state arguments (not route 8 receiver prestate) or placement
+ * can establish phase. All object reads remain synchronous on the main thread. */
+static void fvKHPhase(unsigned kind,id state,int placeKeyboard,int placeInputs){
+ if(!fvGMain())return;
+ if(kind>=3&&kind<=6&&state){
+  int onScreen=fvKHBoolProperty(state,"keyboardOnScreen");
+  if(onScreen>=0){fvKHObservePhase(onScreen,kind,"state.keyboardOnScreen");return;}
+ }
+ if(kind==0){
+  if(placeKeyboard==1||placeInputs==1)fvKHObservePhase(1,kind,"placement.shows");
+  else if(placeKeyboard==0&&placeInputs==0)fvKHObservePhase(0,kind,"placement.hidden");
+ }
+}
+/* Status distinguishes absent/unreadable/nil and valid hash zero. Never print
+ * raw source bundle/scene values. Runtime availability is not device semantics. */
+typedef struct{unsigned hash;int status;} FVKHIdentity;
+static FVKHIdentity fvKHIdentity(id state,const char *selector){
+ FVKHIdentity result={0,0};if(!fvGMain()||!state)return result;
+ Method method=class_getInstanceMethod(object_getClass(state),S(selector));
+ if(!method){result.status=1;return result;}
+ if(!fvKHEncoding(method_getTypeEncoding(method),"@@:")){result.status=2;return result;}
+ id value=SEND(state,selector);if(!value){result.status=3;return result;}
+ if(!fvGKind(value,objc_getClass("NSString"))){result.status=4;return result;}
+ const char *text=((const char*(*)(id,SEL))objc_msgSend)(value,S("UTF8String"));
+ if(!text){result.status=5;return result;}
+ result.status=6;result.hash=fvKHIdentifierHash(text);return result;
+}
+static void fvKHStateIdentity(unsigned seq,id state){
+ if(!fvGMain()||!state)return;
+ const char *fields[]={"hostBundleIdentifier","sourceBundleIdentifier","sourceDisplayIdentifier","sourceSceneIdentityString"};
+ const char *statuses[]={"missing-state","missing-getter","abi-rejected","nil","non-string","nil-utf8","value"};
+ static unsigned encodingNoted[4][7];
+ for(unsigned i=0;i<4;i++){
+  FVKHIdentity identity=fvKHIdentity(state,fields[i]);char line[500];
+  if(!encodingNoted[i][identity.status]){
+   encodingNoted[i][identity.status]=1;
+   Method method=class_getInstanceMethod(object_getClass(state),S(fields[i]));
+   snprintf(line,sizeof line,"KHGETTER field=%s status=%s actual=%.180s expected=@@:; runtime-ABI-only-not-semantic-proof",fields[i],statuses[identity.status],method?method_getTypeEncoding(method):"missing");fvKHLog(line);
+  }
+  snprintf(line,sizeof line,"KHIDENT seq=%u session=%u field=%s status=%s hash=%08x hashValid=%d; source-not-recipient-authorization",seq,fvKHSession,fields[i],statuses[identity.status],identity.hash,identity.status==6);fvKHLog(line);
+ }
 }
 static void fvKHObserveHost(id host){
  if(!host||!fvGMain()||!fvGKind(host,fvGHostClass))return;
@@ -80,7 +160,9 @@ static void fvKHRecord(unsigned kind,id receiver,id eventScene,Rect plain,Rect i
  if(kind>=10)return;
  int isMain=fvGMain();unsigned mode=isMain?(enabled()?1u:0u):__atomic_load_n(&fvKHCurrentMode,__ATOMIC_RELAXED);
  if(!isMain){
-  static unsigned workerCounts[10][2];if(!fvKHTake(&workerCounts[kind][mode],12))return;
+  static unsigned workerCounts[10][2];
+  if(!fvKHQuota(&workerCounts[kind][mode],12,"worker-route",kind,mode,0))return;
+  if(!fvKHQuota(&fvKHDetailTotal,512,"process-details",kind,mode,0))return;
   unsigned seq=__atomic_add_fetch(&fvKHSequence,1u,__ATOMIC_RELAXED);char line[420];
   fvKHCorrelation(seq,kind,0,mode,receiver,eventScene,state);
   snprintf(line,sizeof line,"KHWORKER seq=%u route=%u modeSnapshot=%u scalar1=%d scalar2=%d notify=%d plain=(%.3f,%.3f,%.3f,%.3f) iav=(%.3f,%.3f,%.3f,%.3f); argument-only, no object getters or host enumeration",seq,kind,mode,relevant,showing,notify,plain.origin.x,plain.origin.y,plain.size.width,plain.size.height,iav.origin.x,iav.origin.y,iav.size.width,iav.size.height);fvKHLog(line);return;
@@ -93,6 +175,8 @@ static void fvKHRecord(unsigned kind,id receiver,id eventScene,Rect plain,Rect i
   undocked=fvKHBoolProperty(placement,"isUndocked");interactive=fvKHBoolProperty(placement,"isInteractive");
   extended=fvKHDoubleProperty(placement,"extendedHeight");
  }
+ fvKHPhase(kind,state,placeKeyboard,placeInputs);
+ if(fvKHSegmentsClosed)return;
  Rect fullKeyboard={{0,0},{0,0}};
  int hasFull=(kind==2||kind==6||kind==7||kind==8)&&fvKHABI(receiver,"keyboardFrameIncludingRemoteIAV","{CGRect={CGPoint=dd}{CGSize=dd}}@:");
  if(hasFull)fullKeyboard=rect(receiver,"keyboardFrameIncludingRemoteIAV");
@@ -100,12 +184,14 @@ static void fvKHRecord(unsigned kind,id receiver,id eventScene,Rect plain,Rect i
   ((kind==1||kind==2)&&(showing==1||plain.size.width>0||plain.size.height>0||iav.size.height>0||fullKeyboard.size.height>0))||
   ((kind>=3)&&state&&((fvKHBoolProperty(state,"keyboardOnScreen")==1)||(fvKHABI(state,"keyboardPositionWithIAV","{CGRect={CGPoint=dd}{CGSize=dd}}@:")&&rect(state,"keyboardPositionWithIAV").size.height>0)))||
   (kind==9&&(relevant==1||plain.size.height>0));
- unsigned *counter=active?&fvKHActiveCounts[kind][mode]:&fvKHOtherCounts[kind][mode];
+ unsigned *counter=active?&fvKHActiveCounts[fvKHSession][kind][mode]:&fvKHOtherCounts[fvKHSession][kind][mode];
  unsigned cap=active?((kind<=2||kind==5||kind==6)?8:4):2;
- if(!fvKHTake(counter,cap))return;
+ if(!fvKHQuota(counter,cap,active?"session-route-active":"session-route-inactive",kind,mode,fvKHSession))return;
+ if(!fvKHQuota(&fvKHDetailTotal,512,"process-details",kind,mode,fvKHSession))return;
  unsigned seq=__atomic_add_fetch(&fvKHSequence,1u,__ATOMIC_RELAXED),sceneHash=fvKHSceneHash(eventScene);
  fvKHCorrelation(seq,kind,1,mode,receiver,eventScene,state);
- char line[1100];
+ char line[1100];double now=CFAbsoluteTimeGetCurrent();if(!fvKHStartedAt)fvKHStartedAt=now;
+ snprintf(line,sizeof line,"KHOBS seq=%u pid=%d stamp=%.6f elapsed=%.6f session=%u phaseSnapshot=%d route=%u modeSnapshot=%u; mode-is-preference-not-phase, process-observation-only",seq,getpid(),now,now-fvKHStartedAt,fvKHSession,fvKHObservedPhase,kind,mode);fvKHLog(line);
  const char *routeNames[]={"show-window-scene","update-arbiter-scene","prepare-keyboard-scene","signal-arbiter-state","queue-arbiter-state","arbiter-client-change","remote-did-handle-change","unused","queue-with-completion-prestate","input-destination-change"};
  const char *name=receiver?class_getName(object_getClass(receiver)):"nil";
  const char *eventName=eventScene?class_getName(object_getClass(eventScene)):"nil";
@@ -120,9 +206,12 @@ static void fvKHRecord(unsigned kind,id receiver,id eventScene,Rect plain,Rect i
  if(state){
   int hasPlain=fvKHABI(state,"keyboardPosition","{CGRect={CGPoint=dd}{CGSize=dd}}@:");
   int hasIAV=fvKHABI(state,"keyboardPositionWithIAV","{CGRect={CGPoint=dd}{CGSize=dd}}@:");
+  int hasRemote=fvKHABI(state,"keyboardPositionWithRemoteIAV","{CGRect={CGPoint=dd}{CGSize=dd}}@:");
   Rect a=hasPlain?rect(state,"keyboardPosition"):(Rect){{0,0},{0,0}};
   Rect b=hasIAV?rect(state,"keyboardPositionWithIAV"):(Rect){{0,0},{0,0}};
-  snprintf(line,sizeof line,"KHSTATE seq=%u plainReadable=%d iavReadable=%d plain=(%.3f,%.3f,%.3f,%.3f) iav=(%.3f,%.3f,%.3f,%.3f)",seq,hasPlain,hasIAV,a.origin.x,a.origin.y,a.size.width,a.size.height,b.origin.x,b.origin.y,b.size.width,b.size.height);fvKHLog(line);
+  Rect remote=hasRemote?rect(state,"keyboardPositionWithRemoteIAV"):(Rect){{0,0},{0,0}};
+  snprintf(line,sizeof line,"KHSTATE seq=%u plainReadable=%d iavReadable=%d plain=(%.3f,%.3f,%.3f,%.3f) iav=(%.3f,%.3f,%.3f,%.3f) remoteReadable=%d remote=(%.3f,%.3f,%.3f,%.3f)",seq,hasPlain,hasIAV,a.origin.x,a.origin.y,a.size.width,a.size.height,b.origin.x,b.origin.y,b.size.width,b.size.height,hasRemote,remote.origin.x,remote.origin.y,remote.size.width,remote.size.height);fvKHLog(line);
+  if(kind>=3&&kind<=6)fvKHStateIdentity(seq,state);
  }
  id hosts=isMain&&fvKHHosts?SEND(fvKHHosts,"allObjects"):0;U count=hosts?(U)SEND(hosts,"count"):0;
  unsigned live=0;
@@ -135,15 +224,18 @@ static void fvKHRecord(unsigned kind,id receiver,id eventScene,Rect plain,Rect i
   Rect c=fvKHABI(cached,"frame","{CGRect={CGPoint=dd}{CGSize=dd}}@:")?rect(cached,"frame"):(Rect){{0,0},{0,0}};
   Rect rb=fvKHABI(remote,"bounds","{CGRect={CGPoint=dd}{CGSize=dd}}@:")?rect(remote,"bounds"):(Rect){{0,0},{0,0}};
   id app=ivar(host,"currentActivityApp"),bundle=fvKHObject(app,"bundleIdentifier");
-  const char *bid=fvGKind(bundle,objc_getClass("NSString"))?((const char*(*)(id,SEL))objc_msgSend)(bundle,S("UTF8String")):"unknown";
+  const char *bid=fvGKind(bundle,objc_getClass("NSString"))?((const char*(*)(id,SEL))objc_msgSend)(bundle,S("UTF8String")):0;
   id eventBacking=fvKHObject(eventScene,"_scene");if(!eventBacking)eventBacking=fvKHObject(eventScene,"_FBSScene");
   int eventObjectMatches=eventScene==scene,eventBackingMatches=eventBacking==scene;
   int screenMatches=0;
   if(kind==2||kind==6){id activeScreen=fvKHObject(receiver,"_activeScreen");screenMatches=activeScreen&&SEND(window,"screen")==activeScreen;}
-  snprintf(line,sizeof line,"KHHOST seq=%u route=%u bundle=%.180s hostScene=%08x contextHash=%08x directSceneObjectMatch=%d backingFBSSceneMatch=%d keyboardScreenMatchesWindow=%d settings=(%.3f,%.3f,%.3f,%.3f) cached=(%.3f,%.3f) remote=(%.3f,%.3f) mounted=%d",seq,kind,bid?bid:"unknown",hash,sceneHash,eventObjectMatches,eventBackingMatches,screenMatches,frame.origin.x,frame.origin.y,frame.size.width,frame.size.height,c.size.width,c.size.height,rb.size.width,rb.size.height,remote&&SEND(remote,"superview")==host);fvKHLog(line);live++;
+  snprintf(line,sizeof line,"KHHOST seq=%u route=%u bundle=hash:%08x bundleHashValid=%d hostScene=%08x contextHash=%08x directSceneObjectMatch=%d backingFBSSceneMatch=%d keyboardScreenMatchesWindow=%d settings=(%.3f,%.3f,%.3f,%.3f) cached=(%.3f,%.3f) remote=(%.3f,%.3f) mounted=%d",seq,kind,fvKHIdentifierHash(bid),bid!=0,hash,sceneHash,eventObjectMatches,eventBackingMatches,screenMatches,frame.origin.x,frame.origin.y,frame.size.width,frame.size.height,c.size.width,c.size.height,rb.size.width,rb.size.height,remote&&SEND(remote,"superview")==host);fvKHLog(line);live++;
  }
  if(!isMain){fvKHLog("KHHOST host snapshot skipped off-main; route data above remains read-only");}
- else if(!live&&fvKHMissingBudget){fvKHMissingBudget--;fvKHLog("KHHOST no currently attached tracked floating host; route is observation only");}
+ else if(!live&&fvKHMissingBudget){
+  fvKHMissingBudget--;fvKHLog("KHHOST no currently attached tracked floating host; route is observation only");
+  if(!fvKHMissingBudget)fvKHLog("KHQUOTA exhausted scope=missing-host-notice cap=5; host absence notices suppressed, not proof of callback absence");
+ }
 }
 static FVKHBool fvKHShow(id self,SEL cmd,id inputViews,id placement,id scene){
  FVKHScope scope __attribute__((cleanup(fvKHClose)))={fvKHDepth};fvKHDepth|=1u<<0;

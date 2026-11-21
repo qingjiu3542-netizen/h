@@ -33,9 +33,9 @@ This is an interface topology, NOT a proven implementation order, sender PID, se
 
 `_UIRemoteKeyboards` conforms to both `_UIKeyboardArbiterClient` and `_UIKeyboardArbitrationClient`, declares an `NSXPCConnection *connection`, and exposes a `_UIKeyboardArbitration` proxy. `_UIKeyboardArbiterClient` also declares an NSXPCConnection. This supports looking for a service boundary, but does not identify the service implementation or which connection reaches which process.
 
-## 2. Target identity is not stored in the declared change object
+## 2. Corrected header version: source identity is not recipient authorization
 
-`_UIKeyboardChangedInformation.h` lists only keyboardPosition, keyboardPositionWithIAV, keyboardOnScreen, animationFence. It supports NSCopying/NSSecureCoding and declares encodeWithCoder/initWithCoder. No target PID, scene token or bundle identifier appears among its declared fields/properties.
+The previous local header was mixed-version; its limited NSObject-based declaration was not an adequate iOS16 reference. The public qingralf/iOS16-Runtime-Headers declaration makes `_UIKeyboardChangedInformation` a subclass of `_UIKeyboardUIInformation` and exposes hostBundleIdentifier, sourceBundleIdentifier, sourceDisplayIdentifier, sourceSceneIdentityString and keyboardPositionWithRemoteIAV. The earlier blanket statement that the payload has no Scene/bundle fields is withdrawn. These are source/host identity leads, not independently proven recipient authorization. The local follow-up observer checks each getter's runtime encoding and result type before hashing identities or reading a CGRect; ABI readability is not proof of routing semantics.
 
 Consequences:
 

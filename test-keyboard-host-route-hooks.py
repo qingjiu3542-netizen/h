@@ -14,6 +14,7 @@ assert '"keyboardChanged:shouldConsiderSnapshottingKeyboard:isLocalEvent:"' not 
 assert 'class_copyMethodList' in source
 subprocess.run(['python3',str(R/'test-keyboard-host-route-abi.py')],check=True)
 subprocess.run(['python3',str(R/'test-keyboard-host-route-uihost.py')],check=True)
+subprocess.run(['python3',str(R/'test-keyboard-host-route-segments.py')],check=True)
 subprocess.run(['python3',str(R/'test-keyboard-host-route-iav.py')],check=True)
 subprocess.run(['python3',str(R/'test-keyboard-host-route-correlation.py')],check=True)
 subprocess.run(['python3',str(R/'test-host-route-log.py')],check=True)
