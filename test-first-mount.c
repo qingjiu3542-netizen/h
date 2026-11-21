@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include "FVFirstMountCore.h"
 #include "FVRatioActivationCore.h"
@@ -31,6 +32,19 @@ int main(void){
  assert(!fvRatioSceneSize(430,932,4,&w,&h));
  assert(!fvRatioSceneSize(0,932,1,&w,&h));
  assert(!fvRatioSceneSize(430,932,0,&w,&h));
+ for(long o=1;o<=4;o++){
+  double x=0,y=0,w2=0,h2=0,nw=o>=3?932:430,nh=o>=3?430:932;
+  assert(fvRatioSceneBottomAligned(0,0,nw,nh,o,&x,&y,&w2,&h2));
+  assert(fabs(x)<1e-12&&fabs(y+h2-nh)<1e-12);
+ }
+ {
+  double x=0,y=0,w2=0,h2=0;
+  assert(fvRatioSceneBottomAligned(17,23,932,430,3,&x,&y,&w2,&h2));
+  assert(fabs(x-17)<1e-12&&fabs(y-23)<1e-12);
+  assert(fabs(w2-430*16.0/9.0)<1e-12&&fabs(h2-430)<1e-12);
+ }
+ assert(!fvRatioSceneBottomAligned(0,0,430,932,0,0,0,0,0));
+ assert(!fvRatioSceneBottomAligned(0,0,0,932,1,0,0,0,0));
  for(long o=1;o<=4;o++){
   double sw=430,sh=764.444444444,hostW=319.5,hostH=hostW*16.0/9.0;
   double scale=hostW/(o>=3?sh:sw),ra,rb,rc,rd;

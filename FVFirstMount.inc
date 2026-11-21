@@ -51,8 +51,8 @@ static BOOL fvFMPrepare(id host,id child){
  Rect sf=rect(settings,"frame");if(!fvGRect(sf))return 0;
  long orientation=((long(*)(id,SEL))objc_msgSend)(settings,S("interfaceOrientation"));
  if(orientation<1||orientation>4)return 0;
- Rect target=fvGTargetSceneFrame(sf,orientation);
- if(!fvGRect(target)||fvGSameRect(sf,target))return 0;
+ Rect target;
+ if(!fvGTargetSceneFrame(sf,orientation,&target)||!fvGRect(target)||fvGSameRect(sf,target))return 0;
  /* Capture a reversible baseline before submitting anything. If the remote
   * surface has not reached a readable geometry yet, defer this experiment. */
  id parent=SEND(host,"superview"),remote=ivar(host,"hostingView");

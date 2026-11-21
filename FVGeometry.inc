@@ -103,14 +103,15 @@ static BOOL fvGSettings(id scene,id cached,id *settings){
  return fvGHas(*settings,"frame")&&fvGHas(*settings,"interfaceOrientation")&&fvGHas(*settings,"mutableCopy");
 }
 #include "FVFirstMountCore.h"
-static Rect fvGTargetSceneFrame(Rect nativeFrame,long orientation);
+static BOOL fvGTargetSceneFrame(Rect nativeFrame,long orientation,Rect *out);
 static BOOL fvGFirstPresentationMatches(id h,id scene,id cached,id r,id p,id state,long orientation){
  if(!fvGMain()||!h||!scene||!cached||!r||!p||!state||
     objc_getAssociatedObject(h,&fvGStateKey)!=state||ivar(h,"appScene")!=scene||
     ivar(h,"appSetting")!=cached||ivar(h,"hostingView")!=r||SEND(h,"superview")!=p||
     SEND(r,"superview")!=h||!fvGHas(scene,"settings"))return 0;
  Rect sf=rect(SEND(scene,"settings"),"frame"),cache=rect(cached,"frame");
- Rect native=fvGUnboxRect(state,"sceneFrame"),target=fvGTargetSceneFrame(native,orientation);
+ Rect native=fvGUnboxRect(state,"sceneFrame"),target;
+ if(!fvGTargetSceneFrame(native,orientation,&target))return 0;
  Rect pb=rect(p,"bounds"),hf=rect(h,"frame"),rb=rect(r,"bounds");
  Transform t=trans(r);Point center=fvGCenter(r);
  return fvGSameRect(sf,target)&&fvGSameRect(cache,target)&&
@@ -139,12 +140,14 @@ static BOOL fvGSceneFrame(id scene,id settings,id cached,Rect frame){
 }
 typedef struct {Size sceneSize;Size hostSize;double visualScale;} FVVirtualGeometry;
 #include "FVFirstMountCore.h"
-static Rect fvGTargetSceneFrame(Rect nativeFrame,long orientation){
- Size result={0};
- fvRatioSceneSize(nativeFrame.size.width,nativeFrame.size.height,orientation,
-                  &result.width,&result.height);
- nativeFrame.size=result;
- return nativeFrame;
+static BOOL fvGTargetSceneFrame(Rect nativeFrame,long orientation,Rect *out){
+ if(!out)return 0;
+ Rect result=nativeFrame;
+ if(!fvRatioSceneBottomAligned(nativeFrame.origin.x,nativeFrame.origin.y,
+  nativeFrame.size.width,nativeFrame.size.height,orientation,
+  &result.origin.x,&result.origin.y,&result.size.width,&result.size.height))return 0;
+ if(!fvGRect(result))return 0;
+ *out=result;return 1;
 }
 static BOOL fvGComputeVirtual(double baseWidth,double hostWidth,double ratio,FVVirtualGeometry*out){
  if(!out||!fvGNumber(baseWidth)||!fvGNumber(hostWidth)||!fvGNumber(ratio)||baseWidth<=0||hostWidth<=0||ratio<=0)return 0;
@@ -307,7 +310,10 @@ static void fvGApply(id h){
   * portrait logical width; the long edge is produced by the 16:9 ratio. */
  Rect nativeFrame=state?fvGUnboxRect(state,"sceneFrame"):sf;
  if(!fvGRect(nativeFrame)){fvGDecision(8,"ratio 0.1.4: native Scene frame unavailable");goto retry;}
- Rect targetScene=fvGTargetSceneFrame(nativeFrame,orientation);
+ Rect targetScene;
+ if(!fvGTargetSceneFrame(nativeFrame,orientation,&targetScene)){
+  fvGDecision(9,"ratio 0.1.4: target Scene frame rejected");goto retry;
+ }
  if(!fvGRect(targetScene)){fvGDecision(9,"ratio 0.1.4: target Scene frame rejected");goto retry;}
  double baseWidth=landscape?targetScene.size.height:targetScene.size.width;
  double displayWidth=pb.size.width;

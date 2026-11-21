@@ -17,6 +17,15 @@ static inline int fvRatioSceneSize(double width,double height,long orientation,
  *outHeight=landscape?edge:longEdge;
  return 1;
 }
+static inline int fvRatioSceneBottomAligned(double x,double y,double nativeWidth,double nativeHeight,
+ long orientation,double *outX,double *outY,double *outWidth,double *outHeight){
+ if(!outX||!outY||!fvRatioSceneSize(nativeWidth,nativeHeight,orientation,outWidth,outHeight))return 0;
+ /* Preserve the native coordinate space, but align the virtual Scene's
+  * bottom edge with the native Scene. This is not a global 320->378 fix. */
+ *outX=x;
+ *outY=y+(nativeHeight-*outHeight);
+ return __builtin_isfinite(*outX)&&__builtin_isfinite(*outY);
+}
 static int fvRatioPresentationMatches(double parentWidth,double parentHeight,
  double hostWidth,double hostHeight,double remoteWidth,double remoteHeight,
  double centerX,double centerY,double a,double b,double c,double d,
