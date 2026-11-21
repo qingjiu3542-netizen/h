@@ -140,6 +140,20 @@ static id moduleInfo(void){
  id executable=SEND(SEND(objc_getClass("NSBundle"),"mainBundle"),"executablePath");
  return ((id(*)(id,SEL,id,...))objc_msgSend)(objc_getClass("NSString"),S("stringWithFormat:"),str("FVAspect8\n模块：%@\n宿主：%@\n主页面挂钩：%@\n日志：/tmp/FVAspect8.log 或 /var/mobile/Library/Preferences/FVAspect8.log"),str(info.fname?info.fname:"unknown"),executable,str(prefsInstalled?"已安装":"等待 RootListController"));
 }
+#ifdef FV_SCENE_SAFEAREA_EXPERIMENT
+static id fvSAReadPref(id self,SEL cmd,id sp){
+ (void)self;(void)cmd;(void)sp;id p=prefs();id v=SEND(p,"objectForKey:",str(fvSAKey));
+ int on=fvSAString(v);SEND(p,"release");return SEND(objc_getClass("NSNumber"),"numberWithBool:",on);
+}
+static void fvSAWritePref(id self,SEL cmd,id value,id sp){
+ (void)self;(void)cmd;(void)sp;id p=prefs();
+ if((U)SEND(value,"boolValue")){
+  id token=SEND(SEND(objc_getClass("NSUUID"),"UUID"),"UUIDString");
+  if(token)SEND(p,"setObject:forKey:",token,str(fvSAKey));
+ }else SEND(p,"removeObjectForKey:",str(fvSAKey));
+ SEND(p,"synchronize");SEND(p,"release");trace("SA29 explicit preference request changed; existing preferences untouched");
+}
+#endif
 static id specifiers(id self,SEL cmd){
  id cached=objc_getAssociatedObject(self,&childCache);if(cached)return cached;
  id a=SEND(objc_getClass("NSMutableArray"),"array");Class ps=objc_getClass("PSSpecifier");
@@ -154,6 +168,15 @@ static id specifiers(id self,SEL cmd){
  SEND(x,"setProperty:forKey:",str("ratio"),str("key"));
  SEND(x,"setProperty:forKey:",str("com.minis.floatingview.aspect"),str("defaults"));
  SEND(x,"setProperty:forKey:",vs[0],str("default"));SEND(a,"addObject:",x);
+#ifdef FV_SCENE_SAFEAREA_EXPERIMENT
+ group=SEND(ps,"groupSpecifierWithName:",str("Scene 安全区 A/B/A · 实验 0.1.29"));
+ SEND(group,"setProperty:forKey:",str("默认关闭。仅宿主端单次测试：A 2秒、底部安全区+12逻辑点 4秒、恢复A。需竖屏内置键盘、唯一匹配Scene/来源；字段未设置或ABI不符直接拒绝，不代表键盘避让。开启后在小窗点输入框；再次测试先关再开。卸载前关闭开关、收起键盘并关闭小窗；无法确认恢复时先重启SpringBoard。"),str("footerText"));SEND(a,"addObject:",group);
+ id sx=SEND(ps,"preferenceSpecifierNamed:target:set:get:detail:cell:edit:",str("单次安全区 A/B/A（实验）"),self,S("fvSAWrite:specifier:"),S("fvSARead:"),(id)0,(long)6,(id)0);
+ SEND(sx,"setProperty:forKey:",str("FVSceneSafeAreaAB29"),str("id"));
+ SEND(sx,"setProperty:forKey:",str(fvSAKey),str("key"));
+ SEND(sx,"setProperty:forKey:",str("com.minis.floatingview.aspect"),str("defaults"));
+ SEND(sx,"setProperty:forKey:",vs[0],str("default"));SEND(a,"addObject:",sx);
+#endif
  group=SEND(ps,"groupSpecifierWithName:",str("加载诊断"));
  SEND(group,"setProperty:forKey:",moduleInfo(),str("footerText"));SEND(a,"addObject:",group);
  objc_setAssociatedObject(self,&childCache,a,1); // RETAIN_NONATOMIC
@@ -229,6 +252,10 @@ static void installPrefs(void *unused){
   class_addMethod(ratioController,S("specifiers"),(IMP)specifiers,"@@:");
   class_addMethod(ratioController,S("fvAspectRead:"),(IMP)readPref,"@@:@");
   class_addMethod(ratioController,S("fvAspectWrite:specifier:"),(IMP)writePref,"v@:@@");
+#ifdef FV_SCENE_SAFEAREA_EXPERIMENT
+  class_addMethod(ratioController,S("fvSARead:"),(IMP)fvSAReadPref,"@@:@");
+  class_addMethod(ratioController,S("fvSAWrite:specifier:"),(IMP)fvSAWritePref,"v@:@@");
+#endif
   objc_registerClassPair(ratioController);
  }
  class_addMethod(c,S("fvAspect8Owner"),(IMP)readPref,"@@:@");

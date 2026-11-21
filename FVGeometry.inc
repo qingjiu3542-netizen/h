@@ -12,6 +12,10 @@ static void fvGRequest(id o);
 static void fvKARefresh(void);
 static void fvKAObserveItem(id item);
 static void fvKADetach(id item);
+#ifdef FV_SCENE_SAFEAREA_EXPERIMENT
+static void fvSAStopForHost(id host);
+static void fvSAEvent(unsigned kind,id receiver,id state);
+#endif
 #ifdef FV_KEYBOARD_HOST_ROUTE_PROBE
 static void fvKHObserveHost(id host);
 static void fvKHInstall(void);
@@ -119,24 +123,64 @@ static BOOL fvGFirstPresentationMatches(id h,id scene,id cached,id r,id p,id sta
    rb.size.width,rb.size.height,center.x,center.y,t.a,t.b,t.c,t.d,
    target.size.width,target.size.height,orientation);
 }
-static BOOL fvGSceneFrame(id scene,id settings,id cached,Rect frame){
+static BOOL fvGSceneContextCurrent(id h,id scene,id cached,id state,id p,id r,id w){
+ return fvGMain()&&h&&scene&&cached&&state&&p&&r&&w&&
+  !objc_getAssociatedObject(h,&fvGLeavingKey)&&
+  objc_getAssociatedObject(h,&fvGStateKey)==state&&
+  ivar(h,"appScene")==scene&&ivar(h,"appSetting")==cached&&
+  ivar(h,"hostingView")==r&&ivar(p,"hostingView")==h&&
+  SEND(h,"superview")==p&&SEND(r,"superview")==h&&
+  SEND(h,"window")==w&&SEND(r,"window")==w;
+}
+static BOOL fvGSceneFrame(id h,id scene,id expectedSettings,id cached,Rect frame){
+ id state=objc_getAssociatedObject(h,&fvGStateKey);
+ id p=SEND(h,"superview"),r=ivar(h,"hostingView"),w=SEND(h,"window");
+ if(!fvGSceneContextCurrent(h,scene,cached,state,p,r,w))return 0;
+ /* Geometry getters/native callbacks may replace settings on the SAME Scene.
+  * Read the live snapshot here. expectedSettings is an identity hint only:
+  * never dereference it after native code may have retired it. On drift,
+  * retry the whole geometry calculation (including orientation), rather than
+  * replay stale fields or apply an old target to a new orientation. */
+ id settings=SEND(scene,"settings");
+ if(settings!=expectedSettings||!fvGHas(settings,"frame")||!fvGHas(settings,"mutableCopy")||
+    !fvGSceneContextCurrent(h,scene,cached,state,p,r,w))return 0;
+ /* updateSettings: can synchronously run native callbacks which replace
+  * appSetting or detach this host. Keep the borrowed objects alive, then
+  * revalidate BEFORE touching the cache, not just back in fvGApply. */
+ id keep[]={h,scene,settings,cached,state,p,r,w};
+ for(U i=0;i<sizeof keep/sizeof keep[0];i++)SEND(keep[i],"retain");
+ BOOL result=0;id copy=0;
+ if(!fvGSceneContextCurrent(h,scene,cached,state,p,r,w))goto done;
  BOOL changed=!fvGSameRect(rect(settings,"frame"),frame);
- id copy=changed?SEND(settings,"mutableCopy"):0;
- if(changed&&!fvGHas(copy,"setFrame:")){if(copy)SEND(copy,"release");return 0;}
  if(changed){
+  if(SEND(scene,"settings")!=settings)goto done;
+  copy=SEND(settings,"mutableCopy");
+  if(!fvGHas(copy,"setFrame:")||SEND(scene,"settings")!=settings)goto done;
   setrect(copy,"setFrame:",frame);
+  if(!fvGSceneContextCurrent(h,scene,cached,state,p,r,w)||
+     SEND(scene,"settings")!=settings)goto done;
   SEND(scene,"updateSettings:withTransitionContext:completion:",copy,(id)0,(id)0);
-  SEND(copy,"release");
  }
- /* Read back scene settings before changing the local presentation. This
-  * confirms only server-side settings, not the client's rendered surface. */
+ if(!fvGSceneContextCurrent(h,scene,cached,state,p,r,w))goto done;
+ /* Read-back confirms only host-side settings, not client layout. */
  id accepted=SEND(scene,"settings");
  if(!fvGHas(accepted,"frame")||!fvGSameRect(rect(accepted,"frame"),frame)){
   trace("scene frame not yet accepted; keeping local geometry unchanged");
-  return 0;
+  goto done;
  }
- if(!fvGSameRect(rect(cached,"frame"),frame))setrect(cached,"setFrame:",frame);
- return 1;
+ if(!fvGSceneContextCurrent(h,scene,cached,state,p,r,w))goto done;
+ Rect cacheFrame=rect(cached,"frame");
+ if(!fvGSceneContextCurrent(h,scene,cached,state,p,r,w))goto done;
+ if(!fvGSameRect(cacheFrame,frame))setrect(cached,"setFrame:",frame);
+ if(!fvGSceneContextCurrent(h,scene,cached,state,p,r,w))goto done;
+ accepted=SEND(scene,"settings");
+ result=fvGHas(accepted,"frame")&&fvGSameRect(rect(accepted,"frame"),frame)&&
+  fvGSameRect(rect(cached,"frame"),frame)&&
+  fvGSceneContextCurrent(h,scene,cached,state,p,r,w);
+ done:
+ if(copy)SEND(copy,"release");
+ for(U i=sizeof keep/sizeof keep[0];i>0;i--)SEND(keep[i-1],"release");
+ return result;
 }
 typedef struct {Size sceneSize;Size hostSize;double visualScale;} FVVirtualGeometry;
 #include "FVFirstMountCore.h"
@@ -362,7 +406,7 @@ static void fvGApply(id h){
   fvGPut(state,"sceneFrame",fvGBoxRect(sf));
   objc_setAssociatedObject(h,&fvGStateKey,state,1);
  }
- if(!fvGSceneFrame(scene,settings,cached,targetScene)){
+ if(!fvGSceneFrame(h,scene,settings,cached,targetScene)){
   fvGDecision(13,"ratio 0.1.4: Scene frame not accepted; retry pending");goto retry;
  }
  if(objc_getAssociatedObject(h,&fvGStateKey)!=state||ivar(h,"appScene")!=scene||
@@ -471,6 +515,7 @@ static BOOL fvGCanHook(Class c){
 #include "FVKeyboardAppBridge.inc"
 #include "FVLifecycle.inc"
 #include "FVKeyboardHostRouteProbe.inc"
+#include "FVSceneSafeArea.inc"
 static void fvKAItemWindowHook(id self,SEL cmd){
  fvGItemWindowHook(self,cmd);
  if(SEND(self,"window")){fvKAObserveItem(self);fvKARefresh();}

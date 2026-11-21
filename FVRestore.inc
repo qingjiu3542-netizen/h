@@ -18,14 +18,21 @@ static int fvGRAvailable(void *v){
  return fvGRect(c->original)&&fvGSettings(c->scene,c->cached,&c->settings);
 }
 static int fvGRSubmit(void *v){
- FVRestoreContext *c=v;
- if(fvGSameRect(rect(c->settings,"frame"),c->original))return 1;
- id copy=SEND(c->settings,"mutableCopy");
- if(!fvGHas(copy,"setFrame:")){if(copy)SEND(copy,"release");return 0;}
+ FVRestoreContext *c=v;id settings=0,copy=0;int result=0;
+ /* Availability/orientation checks may reenter native code. Never restore
+  * the frame by replaying their earlier full settings snapshot. */
+ if(!fvGSettings(c->scene,c->cached,&settings))return 0;
+ SEND(settings,"retain");
+ if(!fvGRIdentity(c)||!fvGROrientation(c)||SEND(c->scene,"settings")!=settings)goto done;
+ if(fvGSameRect(rect(settings,"frame"),c->original)){result=1;goto done;}
+ copy=SEND(settings,"mutableCopy");
+ if(!fvGHas(copy,"setFrame:")||SEND(c->scene,"settings")!=settings)goto done;
  setrect(copy,"setFrame:",c->original);
- if(!fvGRIdentity(c)||!fvGROrientation(c)){SEND(copy,"release");return 0;}
+ if(!fvGRIdentity(c)||!fvGROrientation(c)||SEND(c->scene,"settings")!=settings)goto done;
  SEND(c->scene,"updateSettings:withTransitionContext:completion:",copy,(id)0,(id)0);
- SEND(copy,"release");return 1;
+ result=1;
+ done:
+ if(copy)SEND(copy,"release");SEND(settings,"release");return result;
 }
 static int fvGRAccepted(void *v){
  FVRestoreContext *c=v;id s=SEND(c->scene,"settings");
@@ -53,6 +60,9 @@ static void fvGRCommit(void *v){
  }
 }
 static FVRestoreResult fvGRestore(id h,int mode){
+#ifdef FV_SCENE_SAFEAREA_EXPERIMENT
+ fvSAStopForHost(h);
+#endif
  id state=objc_getAssociatedObject(h,&fvGStateKey);
  if(!state)return FVRestoreDone;
  id liveScene=ivar(h,"appScene");

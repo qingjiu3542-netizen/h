@@ -12,6 +12,9 @@ static void fvGRestoreRetry(void *context){
 }
 static void fvGLeave(id h){
  if(!fvGMain()||!h)return;
+#ifdef FV_SCENE_SAFEAREA_EXPERIMENT
+ fvSAStopForHost(h);
+#endif
 #ifdef FV_KEYBOARD_DOCK_EXPERIMENT
  fvKDDropForHost(h);
 #endif

@@ -158,6 +158,9 @@ static void fvKHClose(FVKHScope *scope){fvKHDepth=scope->previous;}
 static void fvKHRecord(unsigned kind,id receiver,id eventScene,Rect plain,Rect iav,
  int relevant,int showing,int notify,id state,id inputViews,id placement){
  if(kind>=10)return;
+#ifdef FV_SCENE_SAFEAREA_EXPERIMENT
+ fvSAEvent(kind,receiver,state); /* Before diagnostic quotas; never quota-gate cleanup. */
+#endif
  int isMain=fvGMain();unsigned mode=isMain?(enabled()?1u:0u):__atomic_load_n(&fvKHCurrentMode,__ATOMIC_RELAXED);
  if(!isMain){
   static unsigned workerCounts[10][2];

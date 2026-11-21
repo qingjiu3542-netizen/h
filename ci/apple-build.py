@@ -12,6 +12,8 @@ for test in ('test-first-mount','test-first-presentation','test-restore','test-k
  exe=B/test
  run('xcrun','clang','-std=c11','-Wall','-Wextra','-Werror',R/(test+'.c'),'-o',exe)
  run(exe)
+run('python3',R/'test-scene-commit-reentry.py')
+run('python3',R/'test-scene-settings-freshness.py')
 run('python3',R/'test-keyboard-native-adapter.py')
 run('python3',R/'test-keyboard-app-forwarding.py')
 run('python3',R/'test-keyboard-app-filter.py')
@@ -26,8 +28,10 @@ run('python3',R/'test-keyboard-host-route-hooks.py')
 run('python3',R/'test-keyboard-host-route-uihost.py')
 run('python3',R/'test-keyboard-host-route-segments.py')
 run('python3',R/'test-fullscreen-safety.py')
+for test in ('test-keyboard-host-route-abi.py','test-keyboard-host-route-correlation.py','test-keyboard-host-route-iav.py','test-host-route-log.py','test-scene-safearea.py','test-scene-safearea-field.py','test-scene-safearea-policy.py'):
+ run('python3',R/test)
 summary=[]
-for mode in ('baseline','probe','first-mount','keyboard-experiment','keyboard-geometry-probe','keyboard-dock-experiment','portrait-avoidance-experiment','keyboard-app-avoidance','host-route-probe'):
+for mode in ('baseline','probe','first-mount','keyboard-experiment','keyboard-geometry-probe','keyboard-dock-experiment','portrait-avoidance-experiment','keyboard-app-avoidance','host-route-probe','host-safearea-experiment'):
  for arch in ('arm64','arm64e'):
   out=B/(mode+'-'+arch+'.dylib')
   flags={'probe':['-DFV_FIRST_PRESENTATION_PROBE=1'],
@@ -37,6 +41,7 @@ for mode in ('baseline','probe','first-mount','keyboard-experiment','keyboard-ge
          'keyboard-dock-experiment':['-DFV_FIRST_MOUNT_MODE=1','-DFV_COMPLETE_MODE=1','-DFV_KEYBOARD_GEOMETRY_PROBE=1','-DFV_KEYBOARD_DOCK_EXPERIMENT=1'],
          'portrait-avoidance-experiment':['-DFV_FIRST_MOUNT_MODE=1','-DFV_COMPLETE_MODE=1','-DFV_KEYBOARD_GEOMETRY_PROBE=1','-DFV_KEYBOARD_DOCK_EXPERIMENT=1','-DFV_KEYBOARD_APP_AVOIDANCE_BRIDGE=1'],
          'host-route-probe':['-fexceptions','-DFV_FIRST_MOUNT_MODE=1','-DFV_COMPLETE_MODE=1','-DFV_KEYBOARD_GEOMETRY_PROBE=1','-DFV_KEYBOARD_DOCK_EXPERIMENT=1','-DFV_KEYBOARD_HOST_ROUTE_PROBE=1'],
+         'host-safearea-experiment':['-fexceptions','-DFV_FIRST_MOUNT_MODE=1','-DFV_COMPLETE_MODE=1','-DFV_KEYBOARD_GEOMETRY_PROBE=1','-DFV_KEYBOARD_DOCK_EXPERIMENT=1','-DFV_KEYBOARD_HOST_ROUTE_PROBE=1','-DFV_SCENE_SAFEAREA_EXPERIMENT=1'],
          'keyboard-app-avoidance':['-fexceptions'],
          'baseline':['-DFV_DIRECT_ENTRY=1']}[mode]
   source=R/('FVKeyboardAppAvoidance.c' if mode=='keyboard-app-avoidance' else 'FVIndependent.c')
